@@ -1,23 +1,33 @@
 package main
 
-import (
-	"net/http"
-	"time"
-)
+// Old functions from when http and https was split
 
-func handleHTTP(w http.ResponseWriter, r *http.Request) {
-	Info.Println("HTTP request received")
-	var req *ProxyRequest = &ProxyRequest{Request: r, Writer: w, Secure: true, Handled: false}
-	// Add to queue
-	queueRequest(req)
+// func handleHTTP(w http.ResponseWriter, r *http.Request) {
+// 	Info.Println("HTTP request received")
+// 	var req *ProxyRequest = &ProxyRequest{Request: r, Writer: w, Secure: true, Handled: false, TimeStamp: time.Now().UnixMilli()}
+// 	req.UUID = generateUUID()
+// 	if settings.Enabled && checkRules(req) {
+// 		// Add to queue
+// 		queueRequest(req)
 
-	for !req.Handled {
-		// Wait until the request is handled
-		time.Sleep(1 * time.Second)
-	}
-	tr := &http.Transport{}
-	handlePass(tr, w, r)
-}
+// 		for !req.Handled && settings.Enabled {
+// 			// Wait until the request is handled
+// 			time.Sleep(1 * time.Second)
+// 		}
+// 		if req.Dropped {
+// 			return
+// 		}
+
+// 		if !req.Handled {
+// 			passUUID(req.UUID)
+// 		}
+
+// 	} else {
+// 		addToHistory(req)
+// 	}
+// 	tr := &http.Transport{}
+// 	handlePass(tr, req)
+// }
 
 // func handlePass(w http.ResponseWriter, r *http.Request) {
 // 	resp, err := http.DefaultTransport.RoundTrip(r)

@@ -4,27 +4,216 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Web Proxy</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f2f2f2;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.4);
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: #000;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        form {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        input[type="checkbox"] {
+            margin-right: 5px;
+        }
+
+        input[type="text"],
+        textarea {
+            width: 100%;
+            padding: 5px;
+            margin-bottom: 10px;
+        }
+
+        select {
+            width: 100%;
+            padding: 5px;
+            margin-bottom: 10px;
+        }
+
+        button {
+            padding: 5px 10px;
+            background-color: #333;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #555;
+        }
+
+        .disabledInput{
+            display: inline-block;
+            width: 80% !important
+        }
+
+        .removeButton{
+            display: inline-block;
+            margin-left: 10px;
+        }
+    </style>
     <script src="./script.js"></script>
 </head>
 <body>
     <h1>Web Proxy</h1>
-    <form id="proxyForm">
-        <label for="method">Method:</label>
-        <select id="method" name="method">
-            <option value="GET">GET</option>
-            <option value="POST">POST</option>
-            <option value="PUT">PUT</option>
-            <option value="DELETE">DELETE</option>
-        </select>
-        <label for="url">URL:</label>
-        <input type="text" id="url" name="url" required value="Queue is empty">
-        <br>
-        <label for="body">Body:</label>
-        <textarea id="body" name="body"></textarea>
-        <label for="headers">Headers:</label>
-        <textarea id="headers" name="headers"></textarea>
-        <br>
-        <button type="button" onclick="handlePass()">Submit</button>
-    </form>
+    <button onclick="openSettingsModal()">Settings</button>
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeSettingsModal()">&times;</span>
+            <form id="settingsForm">
+                <div style="display: block;">
+                    <label for="enabled" style="display: inline;">Enabled:</label>
+                    <input type="checkbox" id="enabled" name="enabled" checked style="display: inline;">
+                </div>
+                <div style="display: block;">
+                    <label for="catchResponse" style="display: inline;">Catch Responses:</label>
+                    <input type="checkbox" id="catchResponse" name="catchResponse" unchecked style="display: inline;">
+                </div>
+                <div style="display: block;">
+                    <label for="proxyPort" style="display: inline;">Proxy Port:</label>
+                    <input type="text" id="proxyPort" name="proxyPort" required value="8888" style="display: inline;width:initial;"> 
+                </div>
+                <h3>Filters</h3>
+                <div style="display:block">
+                    <label for="Use Regex" style="display: inline;" >Use Regex:</label>
+                    <input type="checkbox" id="useRegex" name="useRegex" unchecked style="display: inline;">
+                </div>
+                <div style="display: block;">
+                    <label for="Disabled File Extensions">Disabled File Extensions:</label>
+                    <div id="disabledFileExtensions">
+                    </div>
+                    <button type="button" onclick="createDisabledExtension('')">Add Extension</button>
+                    <br>
+                </div>
+                <div>
+                    <label for="whitelist" style="display: inline;" >Whitelist [x] / Blacklist [ ]:</label>
+                    <input type="checkbox" id="whitelist" name="whitelist" unchecked style="display: inline;">
+                </div>
+                <label for="Disabled Hosts">Hosts:</label>
+                <div id="disabledHosts">
+                </div>
+                <button type="button" onclick="createDisabledHost('')">Add Host</button>
+                <br>
+                <br>
+                <button type="button" onclick="handleSettings()">Save Settings</button>
+            </form>
+        </div>
+    </div>
+    <div class="button-row" style="padding-top: 10px;">
+        <button onclick="openRequestsTab()">Requests</button>
+        <button onclick="openResponsesTab()">Responses</button>
+        <button onclick="openHistoryTab()">History</button>
+    </div>
+    <div id="requestsTab">
+        <h2>Request</h2>
+        <form id="requestForm">
+            <label for="method">Method:</label>
+            <select id="method" name="method">
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+                <option value="PUT">PUT</option>
+                <option value="DELETE">DELETE</option>
+            </select>
+            <label for="path">Path:</label>
+            <input type="text" id="path" name="path" required value="Queue is empty">
+            <label for="host">Host:</label>
+            <input type="text" id="host" name="host" required>
+            <label for="query">Query:</label>
+            <input type="text" id="query" name="query">
+            <br>
+            <label for="headers">Headers:</label>
+            <textarea id="headers" name="headers" rows="3"></textarea>
+            <br>
+            <label for="body">Body:</label>
+            <textarea id="body" name="body" rows="5"></textarea>
+            <br>
+            <input type="hidden" id="uuid" name="uuid" value="">
+            <button type="button" onclick="handlePass()">Pass</button>
+            <button type="button" onclick="handleDrop()">Drop</button>
+            <button type="button" onclick="ignoreCurrentHost()">Ignore Host</button>
+            <button type="button" onclick="ignoreCurrentExtension()">Ignore Extension</button>
+        </form>
+    </div>
+    <div id="responsesTab" style="display: none;">
+        <h2>Response</h2>
+        <form id="responseForm">
+            <label for="resp-statusCode">Status Code:</label>
+            <input type="text" id="resp-statusCode" name="resp-statusCode" required>
+            <label for="resp-statusMessage">Status Message:</label>
+            <input type="text" id="resp-statusMessage" name="resp-statusMessage" required>
+            <br>
+            <label for="resp-headers">Headers:</label>
+            <textarea id="resp-headers" name="resp-headers" rows="3"></textarea>
+            <br>
+            <label for="resp-body">Body:</label>
+            <textarea id="resp-body" name="resp-body" rows="5"></textarea>
+            <br>
+            <input type="hidden" id="resp-uuid" name="resp-uuid" value="">
+            <button type="button" onclick="handleRespPass()">Send</button>
+            <button type="button" onclick="handleRespDrop()">Drop</button>
+        </form>
+    </div>
+    <div id="historyTab" style="display: none;">
+        <h2>History</h2>
+        <table id="historyTable">
+            <tr>
+                <th>Time</th>
+                <th>Method</th>
+                <th>Path</th>
+                <th>Host</th>
+                <th>Headers</th>
+                <th>Body</th>
+                <th>Status Code</th>
+                <th>Status Message</th>
+                <th>Response Headers</th>
+                <th>Response Body</th>
+            </tr>
+        </table>
 </body>
 </html>

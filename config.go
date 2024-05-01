@@ -9,18 +9,10 @@ import (
 	"github.com/joho/godotenv"
 )
 
-type Config struct {
-	SSLKey          string
-	SSLCert         string
-	ProxyListenPort int
-	SSLListenPort   int
-	DebugMode       bool
-}
-
 func NewConfig() *Config {
 	config := new(Config)
 
-	// Load enviroment file
+	// Load env file
 	err := godotenv.Load(".env")
 	if err != nil {
 		Error.Fatal("Error loading .env file")
@@ -35,8 +27,40 @@ func NewConfig() *Config {
 	loadEnv(&config.SSLCert, "SSLCert", "server.crt")
 	loadEnv(&config.SSLListenPort, "SSLListenPort", 8080)
 	loadEnv(&config.ProxyListenPort, "ProxyListenPort", 8888)
+	loadEnv(&config.ProxyListenAddress, "ProxyListenAddress", "127.0.0.1")
+	settings.ProxyPort = config.ProxyListenPort
 	return config
 }
+
+var FileCategories = map[string]string{
+	"js":    "script",
+	"css":   "style",
+	"png":   "image",
+	"ico":   "image",
+	"jpg":   "image",
+	"jpeg":  "image",
+	"gif":   "image",
+	"svg":   "image",
+	"woff":  "font",
+	"woff2": "font",
+	"ttf":   "font",
+	"otf":   "font",
+	"eot":   "font",
+	"html":  "html",
+	"htm":   "html",
+	"xml":   "data",
+	"json":  "data",
+	"txt":   "text",
+	"csv":   "text",
+	"pdf":   "file",
+	"doc":   "file",
+	"docx":  "file",
+	"xls":   "data",
+	"php":   "php",
+	"asp":   "script",
+}
+
+var settings = Settings{Enabled: true, IgnoredTypes: []string{"image", "font", "style", "script"}, CatchResponse: false, Whitelist: false, Regex: true}
 
 func loadEnv(variable interface{}, envName string, defaultValue interface{}) {
 	switch v := variable.(type) {

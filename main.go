@@ -5,7 +5,6 @@ var (
 )
 
 func init() {
-	initLoggers()
 	config = NewConfig()
 }
 

@@ -5,26 +5,48 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
-func handleHTTPS(w http.ResponseWriter, r *http.Request) {
-	Info.Println("HTTPS request received")
+func handleRequest(w http.ResponseWriter, r *http.Request) {
+	var req *ProxyRequest = &ProxyRequest{Request: r, Writer: w, Secure: false, Handled: false, TimeStamp: time.Now().UnixMilli()}
+	if r.TLS != nil {
+		req.Secure = true
+		Debug.Println("Secure request received")
+	} else {
+		Debug.Println("Insecure request received")
+	}
+	req.UUID = generateUUID()
+	if settings.Enabled && checkRules(req) {
+		// Add to queue
+		queueRequest(req)
 
-	var req *ProxyRequest = &ProxyRequest{Request: r, Writer: w, Secure: true, Handled: false}
-	// Add to queue
-	queueRequest(req)
+		for !req.Handled && settings.Enabled {
+			// Wait until the request is handled
+			time.Sleep(1 * time.Second)
+		}
 
-	for !req.Handled {
-		// Wait until the request is handled
-		time.Sleep(1 * time.Second)
+		if !req.Handled {
+			passUUID(req.UUID)
+		}
+
+	} else {
+		addToHistory(req)
 	}
 	tr := &http.Transport{
 		MaxIdleConns:       10,
 		IdleConnTimeout:    30 * time.Second,
 		DisableCompression: true,
 	}
-	handlePass(tr, w, r)
+	if req.Secure {
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	} else {
+		tr = &http.Transport{
+			DisableCompression: true,
+		}
+	}
+	handlePass(tr, req)
 }
 
 func handleTunneling(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +80,7 @@ func startHttpsServer() *http.Server {
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			r.URL.Scheme = "https"
 			r.URL.Host = r.Host
-			handleHTTPS(w, r)
+			handleRequest(w, r)
 		}),
 		// Disable HTTP/2.
 		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
@@ -67,15 +89,44 @@ func startHttpsServer() *http.Server {
 	return server
 }
 
-func handlePass(tr *http.Transport, w http.ResponseWriter, r *http.Request) {
-	resp, err := tr.RoundTrip(r)
+func handlePass(tr *http.Transport, pr *ProxyRequest) {
+	// Manually disable compression to avoid issues with decompression
+	tr.DisableCompression = true
+	if pr.Request.Header.Get("Accept-Encoding") != "" {
+		pr.Request.Header.Del("Accept-Encoding")
+	}
+	resp, err := tr.RoundTrip(pr.Request)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		handleError(err, "Error in handleHTTPsPass", false)
+		http.Error(pr.Writer, err.Error(), http.StatusServiceUnavailable)
+		handleError(err, "Error in handlePass", false)
 		return
 	}
-	defer resp.Body.Close()
-	copyHeader(w.Header(), resp.Header)
-	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	// Update history
+	pr.Response = resp
+	if !settings.CatchResponse || !settings.Enabled || !pr.Handled {
+		defer resp.Body.Close()
+		copyHeader(pr.Writer.Header(), resp.Header)
+		pr.Writer.WriteHeader(resp.StatusCode)
+
+		body, _ := io.ReadAll(resp.Body)
+		pr.Writer.Write(body)
+		pr.Response.Body = io.NopCloser(strings.NewReader(string(body)))
+		return
+	} else {
+		defer resp.Body.Close()
+		queueReply(pr)
+		for !pr.Handled && settings.Enabled && settings.CatchResponse {
+			time.Sleep(1 * time.Second)
+		}
+
+		if !pr.Handled {
+			passRespUUID(pr.UUID)
+		}
+
+		copyHeader(pr.Writer.Header(), resp.Header)
+		pr.Writer.WriteHeader(resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		pr.Writer.Write(body)
+		pr.Response.Body = io.NopCloser(strings.NewReader(string(body)))
+	}
 }
