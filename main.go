@@ -11,5 +11,6 @@ func init() {
 
 func main() {
 	go startHttpsServer()
+	go startWebSocketServer()
 	startProxy()
 }

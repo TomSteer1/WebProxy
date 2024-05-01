@@ -1,32 +1,33 @@
 package main
 
 import (
-	"io"
-	"log"
 	"net/http"
+	"time"
 )
 
-func transfer(destination io.WriteCloser, source io.ReadCloser) {
-	defer destination.Close()
-	defer source.Close()
-	io.Copy(destination, source)
-}
-func handleHTTP(w http.ResponseWriter, req *http.Request) {
-	resp, err := http.DefaultTransport.RoundTrip(req)
-	log.Println(req.URL.Scheme)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
+func handleHTTP(w http.ResponseWriter, r *http.Request) {
+	Info.Println("HTTP request received")
+	var req *ProxyRequest = &ProxyRequest{Request: r, Writer: w, Secure: true, Handled: false}
+	// Add to queue
+	queueRequest(req)
+
+	for !req.Handled {
+		// Wait until the request is handled
+		time.Sleep(1 * time.Second)
 	}
-	defer resp.Body.Close()
-	copyHeader(w.Header(), resp.Header)
-	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	tr := &http.Transport{}
+	handlePass(tr, w, r)
 }
-func copyHeader(dst, src http.Header) {
-	for k, vv := range src {
-		for _, v := range vv {
-			dst.Add(k, v)
-		}
-	}
-}
+
+// func handlePass(w http.ResponseWriter, r *http.Request) {
+// 	resp, err := http.DefaultTransport.RoundTrip(r)
+// 	if err != nil {
+// 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+// 		handleError(err, "Error in handlePass", false)
+// 		return
+// 	}
+// 	defer resp.Body.Close()
+// 	copyHeader(w.Header(), resp.Header)
+// 	w.WriteHeader(resp.StatusCode)
+// 	io.Copy(w, resp.Body)
+// }

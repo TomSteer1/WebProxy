@@ -2,19 +2,36 @@ package main
 
 import (
 	"crypto/tls"
-	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"time"
 )
 
+func handleHTTPS(w http.ResponseWriter, r *http.Request) {
+	Info.Println("HTTPS request received")
+
+	var req *ProxyRequest = &ProxyRequest{Request: r, Writer: w, Secure: true, Handled: false}
+	// Add to queue
+	queueRequest(req)
+
+	for !req.Handled {
+		// Wait until the request is handled
+		time.Sleep(1 * time.Second)
+	}
+	tr := &http.Transport{
+		MaxIdleConns:       10,
+		IdleConnTimeout:    30 * time.Second,
+		DisableCompression: true,
+	}
+	handlePass(tr, w, r)
+}
+
 func handleTunneling(w http.ResponseWriter, r *http.Request) {
 	// Change host to be a locally controlled host
 	var originalHost string = r.Host
 	var newHost string = "localhost:8080"
-	fmt.Println("Connecting to " + originalHost)
+	Debug.Printf("Tunneling request to %s from %s ", originalHost, r.RemoteAddr)
 	dest_conn, err := net.DialTimeout("tcp", newHost, 10*time.Second)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -34,31 +51,31 @@ func handleTunneling(w http.ResponseWriter, r *http.Request) {
 	go transfer(client_conn, dest_conn)
 }
 
-func startHttpsServer() {
-
-	tr := &http.Transport{
-		MaxIdleConns:       10,
-		IdleConnTimeout:    30 * time.Second,
-		DisableCompression: true,
-	}
+func startHttpsServer() *http.Server {
+	Info.Println("Starting HTTPS server")
 	server := &http.Server{
 		Addr: ":8080",
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			log.Println("HTTPs Request:", r.Host)
 			r.URL.Scheme = "https"
 			r.URL.Host = r.Host
-			resp, err := tr.RoundTrip(r)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusServiceUnavailable)
-				return
-			}
-			defer resp.Body.Close()
-			copyHeader(w.Header(), resp.Header)
-			w.WriteHeader(resp.StatusCode)
-			io.Copy(w, resp.Body)
+			handleHTTPS(w, r)
 		}),
 		// Disable HTTP/2.
 		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
 	}
-	log.Fatal(server.ListenAndServeTLS(config.SSLCert, config.SSLKey))
+	go server.ListenAndServeTLS(config.SSLCert, config.SSLKey)
+	return server
+}
+
+func handlePass(tr *http.Transport, w http.ResponseWriter, r *http.Request) {
+	resp, err := tr.RoundTrip(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		handleError(err, "Error in handleHTTPsPass", false)
+		return
+	}
+	defer resp.Body.Close()
+	copyHeader(w.Header(), resp.Header)
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
 }

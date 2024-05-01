@@ -2,9 +2,18 @@ package main
 
 import (
 	"crypto/tls"
-	"log"
 	"net/http"
 )
+
+type ProxyRequest struct {
+	Request *http.Request
+	Writer  http.ResponseWriter
+	Secure  bool
+	Handled bool
+	UUID    string
+}
+
+var queue = make(chan *ProxyRequest, 100)
 
 func startProxy() {
 	server := &http.Server{
@@ -20,5 +29,5 @@ func startProxy() {
 		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
 	}
 	Info.Println("Starting Logger")
-	log.Fatal(server.ListenAndServe())
+	Error.Fatal(server.ListenAndServe())
 }
