@@ -60,12 +60,21 @@
     <div id="requestsTab">
         <h2>Request</h2>
         <form id="requestForm">
+            <button type="button" onclick="handlePass()">Pass</button>
+            <button type="button" onclick="handleDrop()">Drop</button>
+            <button type="button" onclick="ignoreCurrentHost()">Ignore Host</button>
+            <button type="button" onclick="ignoreCurrentExtension()">Ignore Extension</button>
             <label for="method">Method:</label>
             <select id="method" name="method">
                 <option value="GET">GET</option>
                 <option value="POST">POST</option>
                 <option value="PUT">PUT</option>
                 <option value="DELETE">DELETE</option>
+                <option value="PATCH">PATCH</option>
+                <option value="OPTIONS">OPTIONS</option>
+                <option value="HEAD">HEAD</option>
+                <option value="TRACE">TRACE</option>
+                <option value="CONNECT">CONNECT</option>
             </select>
             <label for="path">Path:</label>
             <input type="text" id="path" name="path" required value="Queue is empty">
@@ -75,35 +84,72 @@
             <input type="text" id="query" name="query">
             <br>
             <label for="headers">Headers:</label>
-            <textarea id="headers" name="headers" rows="3"></textarea>
+            <!-- <textarea id="headers" name="headers" rows="3"></textarea> -->
+            <table id="reqHeaderTable" class="headerTable">
+                <tr>
+                    <th style="width: 20%;">Key</th>
+                    <th>Value</th>
+                    <th style="width: 0%;">Remove</th>
+                </tr>
+            </table>
+            <button type="button" onclick="addHeader(document.getElementById('reqHeaderTable'),[])">Add Header</button>
             <br>
+            <label for="cookies">Cookies:</label>
+            <table id="reqCookiesTable" class="cookieTable">
+                <tr>
+                    <th style="width: 20%;">Name</th>
+                    <th>Value</th>
+                    <th>Path</th>
+                    <th>Domain</th>
+                    <th>Expires</th>
+                    <th style="width: 0%;">Remove</th>
+                </tr>
+            </table>
+            <button type="button" onclick="addCookie(document.getElementById('reqCookiesTable'),[])">Add Cookie</button>
             <label for="body">Body:</label>
             <textarea id="body" name="body" rows="5"></textarea>
             <br>
             <input type="hidden" id="uuid" name="uuid" value="">
-            <button type="button" onclick="handlePass()">Pass</button>
-            <button type="button" onclick="handleDrop()">Drop</button>
-            <button type="button" onclick="ignoreCurrentHost()">Ignore Host</button>
-            <button type="button" onclick="ignoreCurrentExtension()">Ignore Extension</button>
         </form>
     </div>
     <div id="responsesTab" style="display: none;">
         <h2>Response</h2>
         <form id="responseForm">
+            <button type="button" onclick="handleRespPass()">Send</button>
+            <button type="button" onclick="handleRespDrop()">Drop</button>
             <label for="resp-statusCode">Status Code:</label>
             <input type="text" id="resp-statusCode" name="resp-statusCode" required>
             <label for="resp-statusMessage">Status Message:</label>
             <input type="text" id="resp-statusMessage" name="resp-statusMessage" required>
             <br>
-            <label for="resp-headers">Headers:</label>
-            <textarea id="resp-headers" name="resp-headers" rows="3"></textarea>
+            <label for="headers">Headers:</label>
+            <!-- <textarea id="headers" name="headers" rows="3"></textarea> -->
+            <table id="respHeaderTable" class="headerTable">
+                <tr>
+                    <th style="width: 20%;">Key</th>
+                    <th>Value</th>
+                    <th style="width: 0%;">Remove</th>
+                </tr>
+            </table>
+            <button type="button" onclick="addHeader(document.getElementById('respHeaderTable'),[])">Add Header</button>
+            <br>
+            <label for="cookies">Cookies:</label>
+            <table id="respCookiesTable" class="cookieTable">
+                <tr>
+                    <th style="width: 20%;">Name</th>
+                    <th>Value</th>
+                    <th>Path</th>
+                    <th>Domain</th>
+                    <th>Expires</th>
+                    <th style="width: 0%;">Remove</th>
+                </tr>
+            </table>
+            <button type="button" onclick="addCookie(document.getElementById('respCookiesTable'),[])">Add Cookie</button>
             <br>
             <label for="resp-body">Body:</label>
             <textarea id="resp-body" name="resp-body" rows="5"></textarea>
             <br>
             <input type="hidden" id="resp-uuid" name="resp-uuid" value="">
-            <button type="button" onclick="handleRespPass()">Send</button>
-            <button type="button" onclick="handleRespDrop()">Drop</button>
         </form>
     </div>
     <div id="historyTab" style="display: none;">

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -130,7 +131,7 @@ func queueRequest(proxyRequest *ProxyRequest) {
 	broadcastMessage(string(msg))
 }
 
-func queueReply(proxyRequest *ProxyRequest) {
+func queueResponse(proxyRequest *ProxyRequest) {
 	proxyRequest.Handled = false
 	respQueue <- proxyRequest
 	var socketMessage SocketRequest
@@ -154,6 +155,7 @@ func convertProxyToReqQueue(proxyRequest *ProxyRequest) QueueItem {
 	queueItem.UUID = proxyRequest.UUID
 	queueItem.Host = proxyRequest.Request.Host
 	queueItem.Query = proxyRequest.Request.URL.RawQuery
+	queueItem.Cookies = proxyRequest.Request.Cookies()
 
 	var body []byte
 	if proxyRequest.Request.Body != nil {
@@ -170,6 +172,7 @@ func convertProxyToRespQueue(proxyRequest *ProxyRequest) QueueItem {
 	queueItem.Status = proxyRequest.Response.StatusCode
 	queueItem.Headers = proxyRequest.Response.Header
 	queueItem.UUID = proxyRequest.UUID
+	queueItem.Cookies = proxyRequest.Response.Cookies()
 	var body []byte
 	if proxyRequest.Response.Body != nil {
 		body, _ = io.ReadAll(proxyRequest.Response.Body)
@@ -187,6 +190,7 @@ func convertProxyToHistoryQueue(proxyRequest *ProxyRequest) QueueItem {
 	queueItem.UUID = proxyRequest.UUID
 	queueItem.Host = proxyRequest.Request.Host
 	queueItem.Query = proxyRequest.Request.URL.RawQuery
+	queueItem.Cookies = proxyRequest.Request.Cookies()
 
 	var body []byte
 	if proxyRequest.Request.Body != nil {
@@ -297,6 +301,9 @@ func passRespUUID(uuid string, newItem ...QueueItem) bool {
 		response.Response.Body = io.NopCloser(strings.NewReader(passRequest.Body))
 		response.Response.Header.Set("Content-Length", strconv.FormatInt(int64(len(passRequest.Body)), 10))
 		response.Response.ContentLength = int64(len(passRequest.Body))
+		for _, cookie := range passRequest.Cookies {
+			response.Response.Header.Add("Set-Cookie", cookie.String())
+		}
 		response.Handled = true
 	}
 	var broadcast SocketRequest
@@ -332,9 +339,15 @@ func passUUID(uuid string, newItem ...QueueItem) bool {
 		}
 		request.Request.Header = passRequest.Headers
 		request.Request.Body = io.NopCloser(strings.NewReader(passRequest.Body))
-		request.Request.URL.RawQuery = passRequest.Query
+		// UrlDecode query
+		decodedQuery, err := url.QueryUnescape(passRequest.Query)
+		handleError(err, "Error in passUUID", false)
+		request.Request.URL.RawQuery = decodedQuery
 		request.Request.Header.Set("Content-Length", strconv.FormatInt(int64(len(passRequest.Body)), 10))
 		request.Request.ContentLength = int64(len(passRequest.Body))
+		for _, cookie := range passRequest.Cookies {
+			request.Request.AddCookie(cookie)
+		}
 		request.Handled = true
 	}
 	var broadcast SocketRequest

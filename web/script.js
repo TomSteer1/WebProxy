@@ -3,6 +3,9 @@ var req_queue = [];
 var resp_queue = [];
 var disabledFileExtensions = [];
 
+var reqCookies = new Object();
+var respCookies = new Object();
+
 document.addEventListener('DOMContentLoaded', function() {
     var openTab = window.location.hash.slice(1);
     switch (openTab) {
@@ -159,23 +162,28 @@ function handlePass() {
     item.path = document.getElementById("path").value;
     item.body = document.getElementById("body").value;
     item.method = document.getElementById("method").value;
-    var headers = new Object();
-    for (var line of document.getElementById("headers").value.split('\n')) {
-        var parts = line.split(':');
-        if (parts.length < 2) {
-            continue;
-        }
-        var header = parts.shift();
-        var value = parts.join(':');
-        // Remove leading and trailing whitespace
-        header = header.trim();
-        value = value.trim();
-        headers[header] = new Array(value);
-    }
-    item.headers = headers
+    // var headers = new Object();
+    // for (var line of document.getElementById("headers").value.split('\n')) {
+    //     var parts = line.split(':');
+    //     if (parts.length < 2) {
+    //         continue;
+    //     }
+    //     var header = parts.shift();
+    //     var value = parts.join(':');
+    //     // Remove leading and trailing whitespace
+    //     header = header.trim();
+    //     value = value.trim();
+    //     headers[header] = new Array(value);
+    // }
+    var headerTable = document.getElementById("reqHeaderTable");
+    item.headers = parseHeaderTable(headerTable);
+    // item.headers = headers
     item.uuid = document.getElementById("uuid").value;
     item.host = document.getElementById("host").value;
     item.query = encodeURIComponent(document.getElementById("query").value);
+    // item.cookies = JSON.parse(document.getElementById("cookies").value);
+    item.cookies = parseCookiesTable(document.getElementById("reqCookiesTable"));
+    
     socket.send(JSON.stringify({ action: 'pass_req' , uuid: document.getElementById("uuid").value, queue: [item] }));
     socket.send(JSON.stringify({ action: 'get_req_queue' }));
     socket.send(JSON.stringify({ action: 'get_resp_queue' }));
@@ -191,20 +199,22 @@ function handleRespPass() {
     var item = new Object();
     item.status = parseInt(document.getElementById("resp-statusCode").value);
     item.body = document.getElementById("resp-body").value;
-    var headers = new Object();
-    for (var line of document.getElementById("resp-headers").value.split('\n')) {
-        var parts = line.split(':');
-        if (parts.length < 2) {
-            continue;
-        }
-        var header = parts.shift();
-        var value = parts.join(':');
-        // Remove leading and trailing whitespace
-        header = header.trim();
-        value = value.trim();
-        headers[header] = new Array(value);
-    }
-    item.headers = headers
+    // var headers = new Object();
+    // for (var line of document.getElementById("resp-headers").value.split('\n')) {
+    //     var parts = line.split(':');
+    //     if (parts.length < 2) {
+    //         continue;
+    //     }
+    //     var header = parts.shift();
+    //     var value = parts.join(':');
+    //     // Remove leading and trailing whitespace
+    //     header = header.trim();
+    //     value = value.trim();
+    //     headers[header] = new Array(value);
+    // }
+    item.headers = parseHeaderTable(document.getElementById("respHeaderTable"));
+    // item.cookies = JSON.parse(document.getElementById("resp-cookies").value);
+    item.cookies = parseCookiesTable(document.getElementById("respCookiesTable"));
     item.uuid = document.getElementById("resp-uuid").value;
     socket.send(JSON.stringify({ action: 'pass_resp' , uuid: document.getElementById("resp-uuid").value, queue: [item] }));
     socket.send(JSON.stringify({ action: 'get_req_queue' }));
@@ -219,19 +229,24 @@ function loadNextInQueue() {
         document.getElementById("path").value = item.path;
         document.getElementById("body").value = item.body;
         document.getElementById("method").value = item.method;
-        document.getElementById("headers").value = parseHeaders(item.headers);
+        // document.getElementById("headers").value = parseHeaders(item.headers);
+        createHeaderTable(document.getElementById("reqHeaderTable"), item.headers);
         document.getElementById("uuid").value = item.uuid;
         document.getElementById("host").value = item.host;
         document.getElementById("query").value = decodeURIComponent(item.query);
         document.getElementById("requestsButton").classList.add("notification");
+        createCookieTable(document.getElementById("reqCookiesTable"), item.cookies);
     } else {
         document.getElementById('path').value = 'Queue is empty';
         document.getElementById('body').value = '';
         document.getElementById('method').value = '';
-        document.getElementById('headers').value = '';
+        // document.getElementById('headers').value = '';
+        clearTable(document.getElementById("reqHeaderTable"));
         document.getElementById('uuid').value = '';
         document.getElementById("host").value = '';
         document.getElementById("query").value = '';
+        // document.getElementById("cookies").value = '';
+        clearTable(document.getElementById("reqCookiesTable"));
         document.getElementById("requestsButton").classList.remove("notification");
     }
 }
@@ -243,14 +258,20 @@ function loadNextRespInQueue() {
         console.log(resp_queue)
         document.getElementById("resp-statusCode").value = item.status
         document.getElementById("resp-body").value = item.body;
-        document.getElementById("resp-headers").value = parseHeaders(item.headers);
+        // document.getElementById("resp-headers").value = parseHeaders(item.headers);
+        createHeaderTable(document.getElementById("respHeaderTable"), item.headers);
         document.getElementById("resp-uuid").value = item.uuid;
         document.getElementById("responsesButton").classList.add("notification");
+        // document.getElementById("resp-cookies").value = parseCookies(item.cookies);
+        createCookieTable(document.getElementById("respCookiesTable"), item.cookies);
     } else {
         document.getElementById('resp-statusCode').value = '';
         document.getElementById('resp-body').value = '';
-        document.getElementById('resp-headers').value = '';
+        // document.getElementById('resp-headers').value = '';
+        clearTable(document.getElementById("respHeaderTable"));
         document.getElementById('resp-uuid').value = '';
+        // document.getElementById('resp-cookies').value = '';
+        clearTable(document.getElementById("respCookiesTable"));
         document.getElementById("responsesButton").classList.remove("notification");
     }
 }
@@ -377,11 +398,9 @@ function createDisabledHost(host) {
 
 function updateHistory(history) {
     var table = document.getElementById("historyTable");
-    while (table.rows.length > 1) {
-        table.deleteRow(1);
-    }
+    clearTable(table);
     history.sort((a, b) => (a.timestamp > b.timestamp) ? -1 : 1);
-    for (var i = 1; i < history.length + 1; i++) {
+    for (var i = 1; i < history.length + 1 && i < 15; i++) {
         var row = table.insertRow(i);
         var cell = row.insertCell(0);
         cell.innerHTML = new Date(history[i-1].timestamp).toLocaleString();
@@ -439,4 +458,115 @@ function ignoreCurrentExtension() {
     createDisabledExtension(extension);
     handleSettings();
     handlePass();
+}
+
+
+function createHeaderTable(table, headers) {
+    clearTable(table);
+    for (var key in headers) {
+        addHeader(table, [key, headers[key]]);
+    }
+}
+
+function clearTable(table) {
+    while (table.rows.length > 1) {
+        table.deleteRow(1);
+    }
+}
+
+function addHeader(table, header) {
+    var row = table.insertRow(table.rows.length);
+    var cell = row.insertCell(0);
+    var input = document.createElement("input");
+    input.type = "text";
+    input.value = header[0] || '';
+    cell.appendChild(input);
+    cell = row.insertCell(1);
+    input = document.createElement("textarea");
+    input.type = "text";
+    input.value = header[1] || '';
+    cell.appendChild(input);
+    cell = row.insertCell(2);
+    var button = document.createElement("button");
+    button.innerHTML = "Remove";
+    button.onclick = function(e) {
+        e.preventDefault();
+        this.parentElement.parentElement.remove();
+    }
+    cell.appendChild(button);
+}
+
+function parseHeaderTable(table) {
+    var headers = new Object();
+    for (var i = 1; i < table.rows.length; i++) {
+        var key = table.rows[i].cells[0].children[0].value;
+        var value = table.rows[i].cells[1].children[0].value;
+        headers[key] = new Array(value);
+    }
+    return headers;
+}
+
+function createCookieTable(table, cookies) {
+    clearTable(table);
+    for(var cookie in cookies) {
+        addCookie(table, cookies[cookie]);
+    }
+
+}
+
+function addCookie(table, cookie) {
+    // Name, Value, Path, Domain, Expires
+    var row = table.insertRow(table.rows.length);
+    var cell = row.insertCell(0);
+    var input = document.createElement("input");
+    input.type = "text";
+    input.value = cookie.Name || '';
+    cell.appendChild(input);
+    cell = row.insertCell(1);
+    input = document.createElement("textarea");
+    input.type = "text";
+    input.value = cookie.Value || '';
+    cell.appendChild(input);
+    cell = row.insertCell(2);
+    input = document.createElement("input");
+    input.type = "text";
+    input.value = cookie.Path || '';
+    cell.appendChild(input);
+    cell = row.insertCell(3);
+    input = document.createElement("input");
+    input.type = "text";
+    input.value = cookie.Domain || '';
+    cell.appendChild(input);
+    cell = row.insertCell(4);
+    input = document.createElement("input");
+    input.type = "text";
+    input.value = cookie.Expires || '';
+    cell.appendChild(input);
+    cell = row.insertCell(5);
+    var button = document.createElement("button");
+    button.innerHTML = "Remove";
+    button.onclick = function(e) {
+        e.preventDefault();
+        this.parentElement.parentElement.remove();
+    }
+    cell.appendChild(button);
+}
+
+function parseCookiesTable(table) {
+    var cookies = new Array();
+    for (var i = 1; i < table.rows.length; i++) {
+        var Cookie = new Object();
+        var name = table.rows[i].cells[0].children[0].value;
+        var value = table.rows[i].cells[1].children[0].value;
+        var path = table.rows[i].cells[2].children[0].value;
+        var domain = table.rows[i].cells[3].children[0].value;
+        var expires = table.rows[i].cells[4].children[0].value;
+        Cookie.Name = name;
+        Cookie.Value = value;
+        Cookie.Path = path;
+        Cookie.Domain = domain;
+        Cookie.Expires = expires;
+        cookies.push(Cookie);
+    }
+    return cookies;
 }

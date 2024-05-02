@@ -115,3 +115,18 @@ button:hover {
     background-color: white;
     border-radius: 50%;
 }
+
+.headerTable {
+    width: 100%;
+    margin-bottom: 5px;
+}
+
+.headerTable th,td {
+    padding-left: 10px;
+    padding-right: 10px;
+    text-align: center;
+}
+
+.headerTable button {
+    align-self: center;
+}

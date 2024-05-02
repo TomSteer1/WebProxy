@@ -13,18 +13,19 @@ type SocketRequest struct {
 }
 
 type QueueItem struct {
-	Method        string      `json:"method"`
-	Path          string      `json:"path"`
-	Body          string      `json:"body"`
-	Query         string      `json:"query"`
-	Headers       http.Header `json:"headers"`
-	UUID          string      `json:"uuid"`
-	Host          string      `json:"host"`
-	Status        int         `json:"status"`
-	StatusMessage string      `json:"statusMessage"`
-	RespBody      string      `json:"respBody"`    // Only used for history
-	RespHeaders   http.Header `json:"respHeaders"` // Only used for history
-	TimeStamp     int64       `json:"timestamp"`   // Only used for history
+	Method        string         `json:"method"`
+	Path          string         `json:"path"`
+	Body          string         `json:"body"`
+	Query         string         `json:"query"`
+	Headers       http.Header    `json:"headers"`
+	Cookies       []*http.Cookie `json:"cookies"`
+	UUID          string         `json:"uuid"`
+	Host          string         `json:"host"`
+	Status        int            `json:"status"`
+	StatusMessage string         `json:"statusMessage"`
+	RespBody      string         `json:"respBody"`    // Only used for history
+	RespHeaders   http.Header    `json:"respHeaders"` // Only used for history
+	TimeStamp     int64          `json:"timestamp"`   // Only used for history
 }
 
 type Settings struct {
