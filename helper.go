@@ -5,13 +5,15 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"runtime"
 
 	"github.com/google/uuid"
 )
 
 func handleError(err error, message string, fatal bool) {
 	if err != nil {
-		Error.Println(message)
+		_, file, no, _ := runtime.Caller(1)
+		Error.Printf("Error : %s in %s:%d\n", message, file, no)
 		if fatal {
 			os.Exit(1)
 		}

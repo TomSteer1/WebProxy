@@ -19,6 +19,7 @@ import (
 var generatedHosts = make(map[string]string)
 
 var server *http.Server
+var unixListener net.Listener
 
 func handleRequest(w http.ResponseWriter, r *http.Request) {
 	var req *ProxyRequest = &ProxyRequest{Request: r, Writer: w, Secure: false, Handled: false, TimeStamp: time.Now().UnixMilli()}
@@ -73,22 +74,26 @@ func handleTunneling(w http.ResponseWriter, r *http.Request) {
 		generateSSLHost(baseDomain)
 	}
 
-	var newHost string = "localhost:8080"
+	// var newHost string = "localhost:8080"
 	Debug.Printf("Tunneling request to %s from %s ", originalHost, r.RemoteAddr)
-	dest_conn, err := net.DialTimeout("tcp", newHost, 10*time.Second)
+	// dest_conn, err := net.DialTimeout("tcp", newHost, 10*time.Second)
+	dest_conn, err := net.Dial("unix", config.SocketLocation)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		handleError(err, "Error dialing connection", false)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
 		http.Error(w, "Hijacking not supported", http.StatusInternalServerError)
+		handleError(err, "Error hijacking connection", false)
 		return
 	}
 	client_conn, _, err := hijacker.Hijack()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		handleError(err, "Error hijacking connection", false)
 	}
 	go transfer(dest_conn, client_conn)
 	go transfer(client_conn, dest_conn)
@@ -99,7 +104,17 @@ func generateSSLHost(host string) {
 	Debug.Printf("Generating SSL certificate for host %s", host)
 	generatedHosts[host] = "localhost"
 	// Load ca cert and key
-	caCert, err := tls.LoadX509KeyPair("certs/ca.crt", "certs/ca.key")
+	// Write cert and key to file from embedded resources
+	// Create directory for certs
+	os.MkdirAll("/tmp/proxy/certs", 0755)
+	crt, err := secretFs.ReadFile("certs/ca.crt")
+	handleError(err, "Error reading ca.crt", false)
+	key, err := secretFs.ReadFile("certs/ca.key")
+	handleError(err, "Error reading ca.key", false)
+	os.WriteFile("/tmp/proxy/certs/ca.crt", crt, 0644)
+	os.WriteFile("/tmp/proxy/certs/ca.key", key, 0644)
+	caCert, err := tls.LoadX509KeyPair("/tmp/proxy/certs/ca.crt", "/tmp/proxy/certs/ca.key")
+	// caCert, err := tls.LoadX509KeyPair("certs/ca.crt", "certs/ca.key")
 	handleError(err, "Error loading CA cert", false)
 	// Generate new cert
 	cert, key, err := generateCert(caCert)
@@ -109,7 +124,7 @@ func generateSSLHost(host string) {
 	if err != nil {
 		handleError(err, "Error writing cert", false)
 	}
-	startHttpsServer("certs/tempserver.crt", "certs/tempserver.key")
+	startHttpsServer("/tmp/proxy/certs/tempserver.crt", "/tmp/proxy/certs/tempserver.key")
 }
 
 func generateCert(ca tls.Certificate) ([]byte, []byte, error) {
@@ -148,25 +163,34 @@ func generateCert(ca tls.Certificate) ([]byte, []byte, error) {
 }
 
 func writeCert(cert []byte, key []byte) error {
-	err := os.WriteFile("certs/tempserver.crt", cert, 0644)
+	err := os.WriteFile("/tmp/proxy/certs/tempserver.crt", cert, 0644)
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile("certs/tempserver.key", key, 0644)
+	err = os.WriteFile("/tmp/proxy/certs/tempserver.key", key, 0644)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
+func startSocket() *net.Listener {
+	Info.Println("Starting HTTPS socket")
+	os.Remove(config.SocketLocation)
+	unixListener, err := net.Listen("unix", config.SocketLocation)
+	if err != nil {
+		Error.Panicf("Error starting unix listener: %s", err.Error())
+	}
+	return &unixListener
+
+}
+
 func startHttpsServer(certs ...string) *http.Server {
 	if server != nil {
 		server.Close()
 	}
-
-	Info.Println("Starting HTTPS server")
+	Info.Println("Starting HTTPS socket")
 	server = &http.Server{
-		Addr: ":8080",
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			r.URL.Scheme = "https"
 			r.URL.Host = r.Host
@@ -175,10 +199,13 @@ func startHttpsServer(certs ...string) *http.Server {
 		// Disable HTTP/2.
 		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
 	}
+	unixListener = *startSocket()
 	if len(certs) == 0 {
-		go server.ListenAndServeTLS(config.SSLCert, config.SSLKey)
+		// go server.ListenAndServeTLS(config.SSLCert, config.SSLKey)
+		go server.ServeTLS(unixListener, config.SSLCert, config.SSLKey)
 	} else {
-		go server.ListenAndServeTLS(certs[0], certs[1])
+		// go server.ListenAndServeTLS(certs[0], certs[1])
+		go server.ServeTLS(unixListener, certs[0], certs[1])
 	}
 	return server
 }
@@ -223,4 +250,14 @@ func handlePass(tr *http.Transport, pr *ProxyRequest) {
 		pr.Writer.Write(body)
 		pr.Response.Body = io.NopCloser(strings.NewReader(string(body)))
 	}
+}
+
+func loadSSL() {
+	os.MkdirAll("/tmp/proxy/certs", 0755)
+	crt, err := secretFs.ReadFile("certs/server.crt")
+	handleError(err, "Error reading from embedded resources", false)
+	key, err := secretFs.ReadFile("certs/server.key")
+	handleError(err, "Error reading from embedded resources", false)
+	os.WriteFile("/tmp/proxy/certs/server.crt", crt, 0644)
+	os.WriteFile("/tmp/proxy/certs/server.key", key, 0644)
 }

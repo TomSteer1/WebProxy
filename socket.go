@@ -16,7 +16,14 @@ var clients = make(map[*websocket.Conn]bool)
 func startWebSocketServer() {
 	Info.Println("Starting WebSocket server")
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "web/"+r.URL.Path[1:])
+		// http.ServeFile(w, r, "web/"+r.URL.Path[1:])
+		handler := http.FileServerFS(publicFs)
+		r.URL.Path = "web/" + r.URL.Path
+		handler.ServeHTTP(w, r)
+
+	})
+	http.HandleFunc("/ca.crt", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFileFS(w, r, secretFs, "certs/ca.crt")
 	})
 	http.HandleFunc("/ws", handleWebSocket)
 	Error.Fatal(http.ListenAndServe(":8000", nil))

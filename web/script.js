@@ -54,8 +54,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     socket.addEventListener('error', function(event) {
         console.error('WebSocket error:', event);
-        // Reconnect to the WebSocket server after a delay
-        setTimeout(Reconnect, 1000);
     });
 
     
@@ -146,12 +144,10 @@ function Reconnect() {
     socket.addEventListener('close', function(event) {
         console.log('WebSocket connection closed');
         // Reconnect to the WebSocket server after a delay
-        setTimeout(Reconnect, 1000);
+        setTimeout(Reconnect, 3000);
     });
     socket.addEventListener('error', function(event) {
         console.error('WebSocket error:', event);
-        // Reconnect to the WebSocket server after a delay
-        setTimeout(Reconnect, 1000);
     });
 }
 

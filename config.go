@@ -15,7 +15,11 @@ func NewConfig() *Config {
 	// Load env file
 	err := godotenv.Load(".env")
 	if err != nil {
-		Error.Fatal("Error loading .env file")
+		if os.IsNotExist(err) {
+			Debug.Println("No .env file found")
+		} else {
+			Error.Fatal("Error loading .env file")
+		}
 	}
 
 	loadEnv(&config.DebugMode, "DebugMode", false)
@@ -23,11 +27,12 @@ func NewConfig() *Config {
 		Debug.SetOutput(io.Discard)
 	}
 
-	loadEnv(&config.SSLKey, "SSLKey", "server.key")
-	loadEnv(&config.SSLCert, "SSLCert", "server.crt")
+	loadEnv(&config.SSLKey, "SSLKey", "/tmp/proxy/certs/server.key")
+	loadEnv(&config.SSLCert, "SSLCert", "/tmp/proxy/certs/server.crt")
 	loadEnv(&config.SSLListenPort, "SSLListenPort", 8080)
 	loadEnv(&config.ProxyListenPort, "ProxyListenPort", 8888)
 	loadEnv(&config.ProxyListenAddress, "ProxyListenAddress", "127.0.0.1")
+	loadEnv(&config.SocketLocation, "SocketLocation", "/tmp/https.sock")
 	settings.ProxyPort = config.ProxyListenPort
 	return config
 }

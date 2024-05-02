@@ -56,4 +56,5 @@ type Config struct {
 	SSLListenPort      int
 	DebugMode          bool
 	ProxyListenAddress string
+	SocketLocation     string
 }
