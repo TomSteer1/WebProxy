@@ -27,12 +27,12 @@ func NewConfig() *Config {
 		Debug.SetOutput(io.Discard)
 	}
 
-	loadEnv(&config.SSLKey, "SSLKey", "/tmp/proxy/certs/server.key")
-	loadEnv(&config.SSLCert, "SSLCert", "/tmp/proxy/certs/server.crt")
+	loadEnv(&config.SSLKey, "SSLKey", os.TempDir()+"/proxy/certs/server.key")
+	loadEnv(&config.SSLCert, "SSLCert", os.TempDir()+"/proxy/certs/server.crt")
 	loadEnv(&config.SSLListenPort, "SSLListenPort", 8080)
 	loadEnv(&config.ProxyListenPort, "ProxyListenPort", 8888)
 	loadEnv(&config.ProxyListenAddress, "ProxyListenAddress", "127.0.0.1")
-	loadEnv(&config.SocketLocation, "SocketLocation", "/tmp/https.sock")
+	loadEnv(&config.SocketLocation, "SocketLocation", os.TempDir()+"/proxy/https.sock")
 	settings.ProxyPort = config.ProxyListenPort
 	return config
 }

@@ -69,20 +69,19 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				response.Msgtype = "ping"
 				msg, err = json.Marshal(response)
 			case "get_req_queue":
-				getReqQueue(&msg)
+				msg = getReqQueue()
 			case "get_resp_queue":
-				getRespQueue(&msg)
+				msg = getRespQueue()
 			case "pass_req":
-				passRequest(&request, &msg)
+				msg = request.passRequest()
 			case "pass_resp":
-				passResponse(&request, &msg)
+				msg = request.passResponse()
 			case "drop":
-				dropRequest(&request, &msg)
+				msg = request.dropRequest()
 			case "get_history":
 				response.Queue = make([]QueueItem, 0)
 				for _, request := range history {
-					Debug.Println("Host:", request.Request.Host)
-					response.Queue = append(response.Queue, convertProxyToHistoryQueue(request))
+					response.Queue = append(response.Queue, request.toHistoryQueue())
 				}
 				response.Msgtype = "history"
 				msg, err = json.Marshal(response)
@@ -91,12 +90,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				response.Settings = settings
 				msg, err = json.Marshal(response)
 			case "set_settings":
-				settings = request.Settings
-				Debug.Println("Settings:", settings)
-				response.Msgtype = "settings"
-				response.Settings = settings
-				msg, err = json.Marshal(response)
-				broadcastMessage(string(msg))
+				msg, err = setSettings(request.Settings)
 			default:
 				response = newResponseError("Unknown action", nil)
 				msg, err = json.Marshal(response)
@@ -127,34 +121,45 @@ func broadcastMessage(message string) {
 	}
 }
 
-func queueRequest(proxyRequest *ProxyRequest) {
+func setSettings(newSettings Settings) ([]byte, error) {
+	var response SocketRequest
+	settings = newSettings
+	Debug.Println("Settings:", settings)
+	response.Msgtype = "settings"
+	response.Settings = settings
+	msg, err := json.Marshal(response)
+	broadcastMessage(string(msg))
+	return msg, err
+}
+
+func (proxyRequest *ProxyRequest) queueRequest() {
 	reqQueue <- proxyRequest
-	addToHistory(proxyRequest)
+	proxyRequest.addToHistory()
 	var socketMessage SocketRequest
 	socketMessage.Msgtype = "newRequest"
 	socketMessage.Queue = make([]QueueItem, 1)
-	socketMessage.Queue[0] = convertProxyToReqQueue(proxyRequest)
+	socketMessage.Queue[0] = proxyRequest.toReqQueue()
 	msg, _ := json.Marshal(socketMessage)
 	broadcastMessage(string(msg))
 }
 
-func queueResponse(proxyRequest *ProxyRequest) {
+func (proxyRequest *ProxyRequest) queueResponse() {
 	proxyRequest.Handled = false
 	respQueue <- proxyRequest
 	var socketMessage SocketRequest
 	socketMessage.Msgtype = "newResponse"
 	socketMessage.Queue = make([]QueueItem, 1)
-	socketMessage.Queue[0] = convertProxyToRespQueue(proxyRequest)
+	socketMessage.Queue[0] = proxyRequest.toRespQueue()
 	msg, _ := json.Marshal(socketMessage)
 	broadcastMessage(string(msg))
 }
 
-func addToHistory(proxyRequest *ProxyRequest) {
+func (proxyRequest *ProxyRequest) addToHistory() {
 	history[proxyRequest.UUID] = proxyRequest
 	Info.Println("Host:", proxyRequest.Request.Host)
 }
 
-func convertProxyToReqQueue(proxyRequest *ProxyRequest) QueueItem {
+func (proxyRequest *ProxyRequest) toReqQueue() QueueItem {
 	var queueItem QueueItem
 	queueItem.Method = proxyRequest.Request.Method
 	queueItem.Path = proxyRequest.Request.URL.Path
@@ -174,7 +179,22 @@ func convertProxyToReqQueue(proxyRequest *ProxyRequest) QueueItem {
 	return queueItem
 }
 
-func convertProxyToRespQueue(proxyRequest *ProxyRequest) QueueItem {
+// func convertProxyToRespQueue(proxyRequest *ProxyRequest) QueueItem {
+// 	var queueItem QueueItem
+// 	queueItem.Status = proxyRequest.Response.StatusCode
+// 	queueItem.Headers = proxyRequest.Response.Header
+// 	queueItem.UUID = proxyRequest.UUID
+// 	queueItem.Cookies = proxyRequest.Response.Cookies()
+// 	var body []byte
+// 	if proxyRequest.Response.Body != nil {
+// 		body, _ = io.ReadAll(proxyRequest.Response.Body)
+// 		queueItem.Body = string(body)
+// 	}
+// 	proxyRequest.Response.Body = io.NopCloser(strings.NewReader(string(body)))
+// 	return queueItem
+// }
+
+func (proxyRequest *ProxyRequest) toRespQueue() QueueItem {
 	var queueItem QueueItem
 	queueItem.Status = proxyRequest.Response.StatusCode
 	queueItem.Headers = proxyRequest.Response.Header
@@ -189,7 +209,7 @@ func convertProxyToRespQueue(proxyRequest *ProxyRequest) QueueItem {
 	return queueItem
 }
 
-func convertProxyToHistoryQueue(proxyRequest *ProxyRequest) QueueItem {
+func (proxyRequest *ProxyRequest) toHistoryQueue() QueueItem {
 	var queueItem QueueItem
 	queueItem.Method = proxyRequest.Request.Method
 	queueItem.Path = proxyRequest.Request.URL.Path
@@ -229,60 +249,68 @@ func newResponseError(message string, err error) SocketRequest {
 	return response
 }
 
-func getReqQueue(msg *[]byte) {
+func getReqQueue() []byte {
 	var resp SocketRequest
+	var msg []byte
 	// Get queue but do not pop
 	resp.Queue = make([]QueueItem, 0)
 	for i := 0; i < len(reqQueue); i++ {
 		request := <-reqQueue
-		resp.Queue = append(resp.Queue, convertProxyToReqQueue(request))
+		resp.Queue = append(resp.Queue, request.toReqQueue())
 		reqQueue <- request
 	}
 	resp.Msgtype = "req_queue"
-	*msg, resp.Error = json.Marshal(resp)
+	msg, resp.Error = json.Marshal(resp)
+	return msg
 }
 
-func getRespQueue(msg *[]byte) {
+func getRespQueue() []byte {
 	var resp SocketRequest
+	var msg []byte
 	// Get queue but do not pop
 	resp.Queue = make([]QueueItem, 0)
 	for i := 0; i < len(respQueue); i++ {
 		request := <-respQueue
-		resp.Queue = append(resp.Queue, convertProxyToRespQueue(request))
+		resp.Queue = append(resp.Queue, request.toRespQueue())
 		respQueue <- request
 	}
 	resp.Msgtype = "resp_queue"
-	*msg, resp.Error = json.Marshal(resp)
+	msg, resp.Error = json.Marshal(resp)
+	return msg
 }
 
-func passRequest(req *SocketRequest, msg *[]byte) {
+func (req *SocketRequest) passRequest() []byte {
 	var response SocketRequest
+	var msg []byte
 	if len(reqQueue) == 0 {
 		response = newResponseError("Queue is empty", nil)
-		*msg, response.Error = json.Marshal(response)
-		return
+		msg, response.Error = json.Marshal(response)
+		return msg
 	}
 	if !passUUID(req.UUID, req.Queue[0]) {
 		response = newResponseError("Request UUID does not match", nil)
 	} else {
 		response.Msgtype = "success"
 	}
-	*msg, response.Error = json.Marshal(response)
+	msg, response.Error = json.Marshal(response)
+	return msg
 }
 
-func passResponse(req *SocketRequest, msg *[]byte) {
+func (req *SocketRequest) passResponse() []byte {
 	var response SocketRequest
+	var msg []byte
 	if len(respQueue) == 0 {
 		response = newResponseError("Queue is empty", nil)
-		*msg, response.Error = json.Marshal(response)
-		return
+		msg, response.Error = json.Marshal(response)
+		return msg
 	}
 	if !passRespUUID(req.UUID, req.Queue[0]) {
 		response = newResponseError("Response UUID does not match", nil)
 	} else {
 		response.Msgtype = "success"
 	}
-	*msg, response.Error = json.Marshal(response)
+	msg, response.Error = json.Marshal(response)
+	return msg
 }
 
 func passRespUUID(uuid string, newItem ...QueueItem) bool {
@@ -365,14 +393,16 @@ func passUUID(uuid string, newItem ...QueueItem) bool {
 	return true
 }
 
-func dropRequest(req *SocketRequest, msg *[]byte) {
+func (req *SocketRequest) dropRequest() []byte {
 	var response SocketRequest
+	var msg []byte
 	if !dropUUID(req.UUID) {
 		response = newResponseError("UUID does not match", nil)
 	} else {
 		response.Msgtype = "dropped"
 	}
-	*msg, response.Error = json.Marshal(response)
+	msg, response.Error = json.Marshal(response)
+	return msg
 }
 
 func dropUUID(uuid string) bool {

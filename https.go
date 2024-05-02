@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -33,7 +34,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	req.UUID = generateUUID()
 	if settings.Enabled && checkRules(req) {
 		// Add to queue
-		queueRequest(req)
+		req.queueRequest()
 
 		for !req.Handled && settings.Enabled {
 			// Wait until the request is handled
@@ -45,7 +46,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		}
 
 	} else {
-		addToHistory(req)
+		req.addToHistory()
 	}
 	tr := &http.Transport{
 		MaxIdleConns:       10,
@@ -74,10 +75,15 @@ func handleTunneling(w http.ResponseWriter, r *http.Request) {
 		generateSSLHost(baseDomain)
 	}
 
-	// var newHost string = "localhost:8080"
 	Debug.Printf("Tunneling request to %s from %s ", originalHost, r.RemoteAddr)
-	// dest_conn, err := net.DialTimeout("tcp", newHost, 10*time.Second)
-	dest_conn, err := net.Dial("unix", config.SocketLocation)
+	var dest_conn net.Conn
+	var err error
+	if runtime.GOOS == "linux" {
+		dest_conn, err = net.Dial("unix", config.SocketLocation)
+	} else {
+		dest_conn, err = net.DialTimeout("tcp", "localhost:8080", 10*time.Second)
+	}
+
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		handleError(err, "Error dialing connection", false)
@@ -163,11 +169,11 @@ func generateCert(ca tls.Certificate) ([]byte, []byte, error) {
 }
 
 func writeCert(cert []byte, key []byte) error {
-	err := os.WriteFile("/tmp/proxy/certs/tempserver.crt", cert, 0644)
+	err := os.WriteFile(strings.Join(strings.Split(config.SocketLocation, "/")[:len(strings.Split(config.SocketLocation, "/"))-1], "/")+"/certs/tempserver.crt", cert, 0644)
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile("/tmp/proxy/certs/tempserver.key", key, 0644)
+	err = os.WriteFile(strings.Join(strings.Split(config.SocketLocation, "/")[:len(strings.Split(config.SocketLocation, "/"))-1], "/")+"/certs/tempserver.key", key, 0644)
 	if err != nil {
 		return err
 	}
@@ -176,10 +182,19 @@ func writeCert(cert []byte, key []byte) error {
 
 func startSocket() *net.Listener {
 	Info.Println("Starting HTTPS socket")
-	os.Remove(config.SocketLocation)
-	unixListener, err := net.Listen("unix", config.SocketLocation)
+	// If linux, remove socket file
+	var unixListener net.Listener
+	var err error
+	if runtime.GOOS == "linux" {
+		Debug.Println("Using unix socket")
+		os.Remove(config.SocketLocation)
+		os.MkdirAll(strings.Join(strings.Split(config.SocketLocation, "/")[:len(strings.Split(config.SocketLocation, "/"))-1], "/"), 0755)
+		unixListener, err = net.Listen("unix", config.SocketLocation)
+	} else {
+		unixListener, err = net.Listen("tcp", "localhost:8080")
+	}
 	if err != nil {
-		Error.Panicf("Error starting unix listener: %s", err.Error())
+		Error.Panicf("Error starting tcp listener: %s", err.Error())
 	}
 	return &unixListener
 
@@ -235,7 +250,7 @@ func handlePass(tr *http.Transport, pr *ProxyRequest) {
 		return
 	} else {
 		defer resp.Body.Close()
-		queueResponse(pr)
+		pr.queueResponse()
 		for !pr.Handled && settings.Enabled && settings.CatchResponse {
 			time.Sleep(1 * time.Second)
 		}
@@ -253,11 +268,11 @@ func handlePass(tr *http.Transport, pr *ProxyRequest) {
 }
 
 func loadSSL() {
-	os.MkdirAll("/tmp/proxy/certs", 0755)
+	os.MkdirAll(strings.Join(strings.Split(config.SocketLocation, "/")[:len(strings.Split(config.SocketLocation, "/"))-1], "/")+"/certs", 0755)
 	crt, err := secretFs.ReadFile("certs/server.crt")
 	handleError(err, "Error reading from embedded resources", false)
 	key, err := secretFs.ReadFile("certs/server.key")
 	handleError(err, "Error reading from embedded resources", false)
-	os.WriteFile("/tmp/proxy/certs/server.crt", crt, 0644)
-	os.WriteFile("/tmp/proxy/certs/server.key", key, 0644)
+	os.WriteFile(strings.Join(strings.Split(config.SocketLocation, "/")[:len(strings.Split(config.SocketLocation, "/"))-1], "/")+"/certs/server.crt", crt, 0644)
+	os.WriteFile(strings.Join(strings.Split(config.SocketLocation, "/")[:len(strings.Split(config.SocketLocation, "/"))-1], "/")+"/certs/server.key", key, 0644)
 }
