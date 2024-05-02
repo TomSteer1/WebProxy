@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var reqQueue = make(chan *ProxyRequest, 100)
@@ -67,4 +68,45 @@ func checkRules(req *ProxyRequest) bool {
 		}
 	}
 	return true
+}
+
+func handleRequest(w http.ResponseWriter, r *http.Request) {
+	var req *ProxyRequest = &ProxyRequest{Request: r, Writer: w, Secure: false, Handled: false, TimeStamp: time.Now().UnixMilli()}
+	if r.TLS != nil {
+		req.Secure = true
+		Debug.Println("Secure request received")
+
+	} else {
+		Debug.Println("Insecure request received")
+	}
+	req.UUID = generateUUID()
+	if settings.Enabled && checkRules(req) {
+		// Add to queue
+		req.queueRequest()
+
+		for !req.Handled && settings.Enabled {
+			// Wait until the request is handled
+			time.Sleep(1 * time.Second)
+		}
+
+		if !req.Handled {
+			passUUID(req.UUID)
+		}
+
+	} else {
+		req.addToHistory()
+	}
+	tr := &http.Transport{
+		MaxIdleConns:       10,
+		IdleConnTimeout:    30 * time.Second,
+		DisableCompression: true,
+	}
+	if req.Secure {
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	} else {
+		tr = &http.Transport{
+			DisableCompression: true,
+		}
+	}
+	handlePass(tr, req)
 }
