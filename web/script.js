@@ -4,6 +4,20 @@ var resp_queue = [];
 var disabledFileExtensions = [];
 
 document.addEventListener('DOMContentLoaded', function() {
+    var openTab = window.location.hash.slice(1);
+    switch (openTab) {
+        case 'requests':
+            openRequestsTab();
+            break;
+        case 'responses':
+            openResponsesTab();
+            break;
+        case 'history':
+            openHistoryTab();
+            break;
+        default:
+            openRequestsTab();
+    }
     // Clear the input fields
     Array.prototype.slice.call(document.getElementsByTagName("input")).forEach(element => {
         element.value = '';
@@ -22,103 +36,121 @@ document.addEventListener('DOMContentLoaded', function() {
         socket.send(JSON.stringify({ action: 'get_settings' }));
         socket.send(JSON.stringify({ action: 'get_req_queue' }));
         socket.send(JSON.stringify({ action: 'get_resp_queue' }));
-    });
-
-    socket.addEventListener('message', function(event) {
-        console.debug('Received message:', event.data);
-        // Handle incoming messages from the WebSocket server
-        const message = JSON.parse(event.data);
-        switch (message.msgtype) {
-            case 'req_queue':
-                // Update the queue with the new data
-                req_queue = message.queue;
-                if (document.getElementById("uuid").value == '' && req_queue.length > 0) {
-                    loadNextInQueue();
-                }
-                break;
-            case 'resp_queue':
-                // Update the queue with the new data
-                resp_queue = message.queue;
-                if (document.getElementById("resp-uuid").value == '' && resp_queue.length > 0) {
-                    loadNextRespInQueue();
-                }
-                break;
-            case 'history':
-                updateHistory(message.queue);
-            case 'error':
-                // Display an error message to the user
-                console.error(message.msg);
-                if (message.msg === 'UUID does not match') {        
-                    socket.send(JSON.stringify({ action: 'get_resp_queue' }));
-                    socket.send(JSON.stringify({ action: 'get_req_queue' }));
-                }
-                break;
-            case 'ping':
-                console.log('Pong');
-                break;
-            case "newRequest":
-                // Add the new request to the queue
-                req_queue.push(message.queue[0]);
-                if (document.getElementById("uuid").value == '' && req_queue.length > 0) {
-                    loadNextInQueue();
-                }
-                break;
-            case "newResponse":
-                // Add the new response to the queue
-                resp_queue.push(message.queue[0]);
-                if (document.getElementById("resp-uuid").value == '' && resp_queue.length > 0) {
-                    loadNextRespInQueue();
-                }
-                break;
-            case "handled":
-                // Remove the request from the queue
-                req_queue = req_queue.filter(item => item.uuid !== message.uuid);
-                if (document.getElementById("uuid").value == message.uuid) {
-                    loadNextInQueue();
-                }
-                console.log(document.getElementById("resp-uuid").value, message.uuid);
-                if (document.getElementById("resp-uuid").value == message.uuid) {
-                    loadNextRespInQueue();
-                }
-                break;
-            case "settings":
-                document.getElementById("enabled").checked = message.settings.enabled;
-                document.getElementById("disabledFileExtensions").innerHTML = '';
-                if (message.settings.ignoredTypes != null) {
-                    for (var i = 0; i < message.settings.ignoredTypes.length; i++) {
-                        createDisabledExtension(message.settings.ignoredTypes[i]);
-                        disabledFileExtensions.push(message.settings.ignoredTypes[i]);
-                    }
-                }
-                document.getElementById("disabledHosts").innerHTML = '';
-                if (message.settings.ignoredHosts != null) {
-                    for (var i = 0; i < message.settings.ignoredHosts.length; i++) {
-                        createDisabledHost(message.settings.ignoredHosts[i]);
-                    }
-                }
-                document.getElementById("proxyPort").value = message.settings.proxyPort;
-                document.getElementById("catchResponse").checked = message.settings.catchResponse;
-                document.getElementById("whitelist").checked = message.settings.whiteList;
-                document.getElementById("useRegex").checked = message.settings.useRegex;
-                break;
-            default:
-                console.error('Unknown message type:', message.msgtype);
+        if (window.location.hash.slice(1) == 'history') {
+            socket.send(JSON.stringify({ action: 'get_history' }));
         }
     });
+
+    socket.addEventListener('message', parseWSMessage);
 
     socket.addEventListener('close', function(event) {
         console.log('WebSocket connection closed');
         // Reconnect to the WebSocket server after a delay
-        setTimeout(function() {
-            socket = new WebSocket('ws://' + location.host + '/ws');
-        }, 1000);
+        setTimeout(Reconnect, 1000);
     });
 
     socket.addEventListener('error', function(event) {
         console.error('WebSocket error:', event);
+        // Reconnect to the WebSocket server after a delay
+        setTimeout(Reconnect, 1000);
     });
+
+    
+
 });
 
+function parseWSMessage(event) {
+    console.debug('Received message:', event.data);
+    // Handle incoming messages from the WebSocket server
+    const message = JSON.parse(event.data);
+    switch (message.msgtype) {
+        case 'req_queue':
+            // Update the queue with the new data
+            req_queue = message.queue;
+            if (document.getElementById("uuid").value == '' && req_queue.length > 0) {
+                loadNextInQueue();
+            }
+            break;
+        case 'resp_queue':
+            // Update the queue with the new data
+            resp_queue = message.queue;
+            if (document.getElementById("resp-uuid").value == '' && resp_queue.length > 0) {
+                loadNextRespInQueue();
+            }
+            break;
+        case 'history':
+            updateHistory(message.queue);
+        case 'error':
+            // Display an error message to the user
+            console.error(message.msg);
+            if (message.msg === 'UUID does not match') {        
+                socket.send(JSON.stringify({ action: 'get_resp_queue' }));
+                socket.send(JSON.stringify({ action: 'get_req_queue' }));
+            }
+            break;
+        case 'ping':
+            console.log('Pong');
+            break;
+        case "newRequest":
+            // Add the new request to the queue
+            req_queue.push(message.queue[0]);
+            if (document.getElementById("uuid").value == '' && req_queue.length > 0) {
+                loadNextInQueue();
+            }
+            break;
+        case "newResponse":
+            // Add the new response to the queue
+            resp_queue.push(message.queue[0]);
+            if (document.getElementById("resp-uuid").value == '' && resp_queue.length > 0) {
+                loadNextRespInQueue();
+            }
+            break;
+        case "handled":
+            // Remove the request from the queue
+            req_queue = req_queue.filter(item => item.uuid !== message.uuid);
+            resp_queue = resp_queue.filter(item => item.uuid !== message.uuid);
+            if (document.getElementById("uuid").value == message.uuid) {
+                loadNextInQueue();
+                socket.send(JSON.stringify({ action: 'get_resp_queue' }));
+            } else {
+                if (document.getElementById("resp-uuid").value == message.uuid) {
+                    loadNextRespInQueue();
+                }
+            }
+            break;
+        case "settings":
+            loadSettings(message)
+            break;
+        case "success":
+            console.log("Success");
+            break;
+        default:
+            console.error('Unknown message type:', message.msgtype);
+    }
+};
+
+function Reconnect() {
+    socket = new WebSocket('ws://' + location.host + '/ws');
+    socket.addEventListener('open', function(event) {
+        console.log('WebSocket connection established');
+        // Pull the current queue from the WebSocket server
+        socket.send(JSON.stringify({ action: 'ping' }));
+        socket.send(JSON.stringify({ action: 'get_settings' }));
+        socket.send(JSON.stringify({ action: 'get_req_queue' }));
+        socket.send(JSON.stringify({ action: 'get_resp_queue' }));
+    });
+    socket.addEventListener('message', parseWSMessage);
+    socket.addEventListener('close', function(event) {
+        console.log('WebSocket connection closed');
+        // Reconnect to the WebSocket server after a delay
+        setTimeout(Reconnect, 1000);
+    });
+    socket.addEventListener('error', function(event) {
+        console.error('WebSocket error:', event);
+        // Reconnect to the WebSocket server after a delay
+        setTimeout(Reconnect, 1000);
+    });
+}
 
 
 function handlePass() {
@@ -191,6 +223,7 @@ function loadNextInQueue() {
         document.getElementById("uuid").value = item.uuid;
         document.getElementById("host").value = item.host;
         document.getElementById("query").value = decodeURIComponent(item.query);
+        document.getElementById("requestsButton").classList.add("notification");
     } else {
         document.getElementById('path').value = 'Queue is empty';
         document.getElementById('body').value = '';
@@ -199,6 +232,7 @@ function loadNextInQueue() {
         document.getElementById('uuid').value = '';
         document.getElementById("host").value = '';
         document.getElementById("query").value = '';
+        document.getElementById("requestsButton").classList.remove("notification");
     }
 }
 
@@ -206,15 +240,18 @@ function loadNextRespInQueue() {
     if (resp_queue.length > 0) {
         const item = resp_queue.shift();
         console.log('Loading item:', item);
+        console.log(resp_queue)
         document.getElementById("resp-statusCode").value = item.status
         document.getElementById("resp-body").value = item.body;
         document.getElementById("resp-headers").value = parseHeaders(item.headers);
         document.getElementById("resp-uuid").value = item.uuid;
+        document.getElementById("responsesButton").classList.add("notification");
     } else {
         document.getElementById('resp-statusCode').value = '';
         document.getElementById('resp-body').value = '';
         document.getElementById('resp-headers').value = '';
         document.getElementById('resp-uuid').value = '';
+        document.getElementById("responsesButton").classList.remove("notification");
     }
 }
 
@@ -249,6 +286,27 @@ function handleSettings() {
     closeSettingsModal()
 }
 
+function loadSettings(message) {
+    document.getElementById("enabled").checked = message.settings.enabled;
+    document.getElementById("disabledFileExtensions").innerHTML = '';
+    if (message.settings.ignoredTypes != null) {
+        for (var i = 0; i < message.settings.ignoredTypes.length; i++) {
+            createDisabledExtension(message.settings.ignoredTypes[i]);
+            disabledFileExtensions.push(message.settings.ignoredTypes[i]);
+        }
+    }
+    document.getElementById("disabledHosts").innerHTML = '';
+    if (message.settings.ignoredHosts != null) {
+        for (var i = 0; i < message.settings.ignoredHosts.length; i++) {
+            createDisabledHost(message.settings.ignoredHosts[i]);
+        }
+    }
+    document.getElementById("proxyPort").value = message.settings.proxyPort;
+    document.getElementById("catchResponse").checked = message.settings.catchResponse;
+    document.getElementById("whitelist").checked = message.settings.whiteList;
+    document.getElementById("useRegex").checked = message.settings.useRegex;
+}
+
 function openSettingsModal() {
     document.getElementById("settingsModal").style.display = "block";
 }
@@ -261,19 +319,24 @@ function openRequestsTab() {
     document.getElementById("requestsTab").style.display = "block";
     document.getElementById("responsesTab").style.display = "none";
     document.getElementById("historyTab").style.display = "none";
+    window.location.hash = 'requests';
 }
 
 function openResponsesTab() {
     document.getElementById("requestsTab").style.display = "none";
     document.getElementById("responsesTab").style.display = "block";
     document.getElementById("historyTab").style.display = "none";
+    window.location.hash = 'responses';
 }
 
 function openHistoryTab() {
     document.getElementById("requestsTab").style.display = "none";
     document.getElementById("responsesTab").style.display = "none";
     document.getElementById("historyTab").style.display = "block";
-    socket.send(JSON.stringify({ action: 'get_history' }));
+    window.location.hash = 'history';
+    if (socket.readyState == WebSocket.OPEN) {
+        socket.send(JSON.stringify({ action: 'get_history' }));
+    }
 }
 
 function createDisabledExtension(extension) {

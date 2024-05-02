@@ -4,100 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Web Proxy</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f2f2f2;
-            margin: 0;
-            padding: 20px;
-        }
-
-        h1 {
-            color: #333;
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            background-color: rgba(0, 0, 0, 0.4);
-        }
-
-        .modal-content {
-            background-color: #fefefe;
-            margin: 15% auto;
-            padding: 20px;
-            border: 1px solid #888;
-            width: 80%;
-        }
-
-        .close {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-        }
-
-        .close:hover,
-        .close:focus {
-            color: #000;
-            text-decoration: none;
-            cursor: pointer;
-        }
-
-        form {
-            margin-bottom: 20px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 5px;
-        }
-
-        input[type="checkbox"] {
-            margin-right: 5px;
-        }
-
-        input[type="text"],
-        textarea {
-            width: 100%;
-            padding: 5px;
-            margin-bottom: 10px;
-        }
-
-        select {
-            width: 100%;
-            padding: 5px;
-            margin-bottom: 10px;
-        }
-
-        button {
-            padding: 5px 10px;
-            background-color: #333;
-            color: #fff;
-            border: none;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background-color: #555;
-        }
-
-        .disabledInput{
-            display: inline-block;
-            width: 80% !important
-        }
-
-        .removeButton{
-            display: inline-block;
-            margin-left: 10px;
-        }
-    </style>
+    <link rel="stylesheet" href="./style.css">
     <script src="./script.js"></script>
 </head>
 <body>
@@ -146,8 +53,8 @@
         </div>
     </div>
     <div class="button-row" style="padding-top: 10px;">
-        <button onclick="openRequestsTab()">Requests</button>
-        <button onclick="openResponsesTab()">Responses</button>
+        <button onclick="openRequestsTab()" id="requestsButton">Requests</button>
+        <button onclick="openResponsesTab()" id="responsesButton">Responses</button>
         <button onclick="openHistoryTab()">History</button>
     </div>
     <div id="requestsTab">

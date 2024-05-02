@@ -254,7 +254,7 @@ func passRequest(req *SocketRequest, msg *[]byte) {
 	if !passUUID(req.UUID, req.Queue[0]) {
 		response = newResponseError("Request UUID does not match", nil)
 	} else {
-		response.Msgtype = "handled"
+		response.Msgtype = "success"
 	}
 	*msg, response.Error = json.Marshal(response)
 }
@@ -269,7 +269,7 @@ func passResponse(req *SocketRequest, msg *[]byte) {
 	if !passRespUUID(req.UUID, req.Queue[0]) {
 		response = newResponseError("Response UUID does not match", nil)
 	} else {
-		response.Msgtype = "handled"
+		response.Msgtype = "success"
 	}
 	*msg, response.Error = json.Marshal(response)
 }
