@@ -35,17 +35,16 @@ func handleTunneling(w http.ResponseWriter, r *http.Request) {
 	}
 
 	Debug.Printf("Tunneling request to %s from %s ", originalHost, r.RemoteAddr)
-	var dest_conn net.Conn
+	var destConn net.Conn
 	var err error
 	if runtime.GOOS == "linux" {
-		dest_conn, err = net.Dial("unix", config.SocketLocation)
+		destConn, err = net.Dial("unix", config.SocketLocation)
 	} else {
-		dest_conn, err = net.DialTimeout("tcp", "localhost:8080", 10*time.Second)
+		destConn, err = net.DialTimeout("tcp", "localhost:8080", 10*time.Second)
 	}
 
-	if err != nil {
+	if handleError(err, "Error dialing connection", false) {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		handleError(err, "Error dialing connection", false)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
@@ -55,13 +54,12 @@ func handleTunneling(w http.ResponseWriter, r *http.Request) {
 		handleError(err, "Error hijacking connection", false)
 		return
 	}
-	client_conn, _, err := hijacker.Hijack()
-	if err != nil {
+	clientConn, _, err := hijacker.Hijack()
+	if handleError(err, "Error hijacking connection", false) {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		handleError(err, "Error hijacking connection", false)
 	}
-	go transfer(dest_conn, client_conn)
-	go transfer(client_conn, dest_conn)
+	go transfer(destConn, clientConn)
+	go transfer(clientConn, destConn)
 }
 
 func generateSSLHost(host string) {
@@ -71,14 +69,14 @@ func generateSSLHost(host string) {
 	// Load ca cert and key
 	// Write cert and key to file from embedded resources
 	// Create directory for certs
-	os.MkdirAll("/tmp/proxy/certs", 0755)
+	os.MkdirAll(config.DataDir+"certs", 0755)
 	crt, err := secretFs.ReadFile("certs/ca.crt")
 	handleError(err, "Error reading ca.crt", false)
 	key, err := secretFs.ReadFile("certs/ca.key")
 	handleError(err, "Error reading ca.key", false)
-	os.WriteFile("/tmp/proxy/certs/ca.crt", crt, 0644)
-	os.WriteFile("/tmp/proxy/certs/ca.key", key, 0644)
-	caCert, err := tls.LoadX509KeyPair("/tmp/proxy/certs/ca.crt", "/tmp/proxy/certs/ca.key")
+	os.WriteFile(config.DataDir+"certs/ca.crt", crt, 0644)
+	os.WriteFile(config.DataDir+"certs/ca.key", key, 0644)
+	caCert, err := tls.LoadX509KeyPair(config.DataDir+"certs/ca.crt", config.DataDir+"certs/ca.key")
 	// caCert, err := tls.LoadX509KeyPair("certs/ca.crt", "certs/ca.key")
 	handleError(err, "Error loading CA cert", false)
 	// Generate new cert
@@ -86,10 +84,8 @@ func generateSSLHost(host string) {
 	handleError(err, "Error generating cert", false)
 	// Write cert and key to file
 	err = writeCert(cert, key)
-	if err != nil {
-		handleError(err, "Error writing cert", false)
-	}
-	startHttpsServer("/tmp/proxy/certs/tempserver.crt", "/tmp/proxy/certs/tempserver.key")
+	handleError(err, "Error writing cert", false)
+	startHttpsServer(config.DataDir+"certs/tempserver.crt", config.DataDir+"certs/tempserver.key")
 }
 
 func generateCert(ca tls.Certificate) ([]byte, []byte, error) {
@@ -113,13 +109,12 @@ func generateCert(ca tls.Certificate) ([]byte, []byte, error) {
 		DNSNames:              dnsNames,
 	}
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
+	if handleError(err, "Error generating key", false) {
 		return nil, nil, err
 	}
 	x5ca, _ := x509.ParseCertificate(ca.Certificate[0])
 	certBytes, err := x509.CreateCertificate(rand.Reader, cert, x5ca, &priv.PublicKey, ca.PrivateKey)
-
-	if err != nil {
+	if handleError(err, "Error creating cert", false) {
 		return nil, nil, err
 	}
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
@@ -128,11 +123,11 @@ func generateCert(ca tls.Certificate) ([]byte, []byte, error) {
 }
 
 func writeCert(cert []byte, key []byte) error {
-	err := os.WriteFile(strings.Join(strings.Split(config.SocketLocation, "/")[:len(strings.Split(config.SocketLocation, "/"))-1], "/")+"/certs/tempserver.crt", cert, 0644)
+	err := os.WriteFile(config.DataDir+"certs/tempserver.crt", cert, 0644)
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile(strings.Join(strings.Split(config.SocketLocation, "/")[:len(strings.Split(config.SocketLocation, "/"))-1], "/")+"/certs/tempserver.key", key, 0644)
+	err = os.WriteFile(config.DataDir+"certs/tempserver.key", key, 0644)
 	if err != nil {
 		return err
 	}
@@ -147,14 +142,12 @@ func startSocket() *net.Listener {
 	if runtime.GOOS == "linux" {
 		Debug.Println("Using unix socket")
 		os.Remove(config.SocketLocation)
-		os.MkdirAll(strings.Join(strings.Split(config.SocketLocation, "/")[:len(strings.Split(config.SocketLocation, "/"))-1], "/"), 0755)
+		os.MkdirAll(config.DataDir, 0755)
 		unixListener, err = net.Listen("unix", config.SocketLocation)
 	} else {
 		unixListener, err = net.Listen("tcp", "localhost:8080")
 	}
-	if err != nil {
-		Error.Panicf("Error starting tcp listener: %s", err.Error())
-	}
+	handleError(err, "Error starting listener", true)
 	return &unixListener
 
 }
@@ -191,9 +184,8 @@ func handlePass(tr *http.Transport, pr *ProxyRequest) {
 		pr.Request.Header.Del("Accept-Encoding")
 	}
 	resp, err := tr.RoundTrip(pr.Request)
-	if err != nil {
+	if handleError(err, "Error in handlePass", false) {
 		http.Error(pr.Writer, err.Error(), http.StatusServiceUnavailable)
-		handleError(err, "Error in handlePass", false)
 		return
 	}
 	// Update history
@@ -227,11 +219,11 @@ func handlePass(tr *http.Transport, pr *ProxyRequest) {
 }
 
 func loadSSL() {
-	os.MkdirAll(strings.Join(strings.Split(config.SocketLocation, "/")[:len(strings.Split(config.SocketLocation, "/"))-1], "/")+"/certs", 0755)
+	os.MkdirAll(config.DataDir+"certs", 0755)
 	crt, err := secretFs.ReadFile("certs/server.crt")
 	handleError(err, "Error reading from embedded resources", false)
 	key, err := secretFs.ReadFile("certs/server.key")
 	handleError(err, "Error reading from embedded resources", false)
-	os.WriteFile(strings.Join(strings.Split(config.SocketLocation, "/")[:len(strings.Split(config.SocketLocation, "/"))-1], "/")+"/certs/server.crt", crt, 0644)
-	os.WriteFile(strings.Join(strings.Split(config.SocketLocation, "/")[:len(strings.Split(config.SocketLocation, "/"))-1], "/")+"/certs/server.key", key, 0644)
+	os.WriteFile(config.DataDir+"certs/server.crt", crt, 0644)
+	os.WriteFile(config.DataDir+"certs/server.key", key, 0644)
 }

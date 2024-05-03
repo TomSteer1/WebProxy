@@ -4,7 +4,7 @@ import "net/http"
 
 type SocketRequest struct {
 	Action   string      `json:"action,omitempty"`
-	Msgtype  string      `json:"msgtype,omitempty"`
+	Msgtype  MessageType `json:"msgtype,omitempty"`
 	Msg      string      `json:"msg,omitempty"`
 	Queue    []QueueItem `json:"queue"`
 	Error    error       `json:"error,omitempty"`
@@ -58,4 +58,22 @@ type Config struct {
 	ProxyListenAddress string
 	SocketLocation     string
 	Password           string
+	DataDir            string
 }
+
+type MessageType string
+
+const (
+	MessageTypeError       MessageType = "error"
+	MessageTypeSettings    MessageType = "settings"
+	MessageTypeAuth        MessageType = "auth"
+	MessageTypePing        MessageType = "ping"
+	MessageTypeHistory     MessageType = "history"
+	MessageTypeReqQueue    MessageType = "req_queue"
+	MessageTypeRespQueue   MessageType = "resp_queue"
+	MessageTypeSuccess     MessageType = "success"
+	MessageTypeHandled     MessageType = "handled"
+	MessageTypeDropped     MessageType = "dropped"
+	MessageTypeNewRequest  MessageType = "newRequest"
+	MessageTypeNewResponse MessageType = "newResponse"
+)

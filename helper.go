@@ -10,14 +10,16 @@ import (
 	"github.com/google/uuid"
 )
 
-func handleError(err error, message string, fatal bool) {
+func handleError(err error, message string, fatal bool) bool {
 	if err != nil {
 		_, file, no, _ := runtime.Caller(1)
-		Error.Printf("Error : %s in %s:%d\n", message, file, no)
 		if fatal {
+			Error.Panicf("%s : %s in %s:%d\n", message, err.Error(), file, no)
 			os.Exit(1)
 		}
+		Error.Printf("%s : %s in %s:%d\n", message, err.Error(), file, no)
 	}
+	return err != nil
 }
 
 func copyHeader(dst, src http.Header) {

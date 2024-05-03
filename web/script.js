@@ -148,11 +148,6 @@ function Reconnect() {
     socket.addEventListener('open', function(event) {
         console.log('WebSocket connection established');
         // Pull the current queue from the WebSocket server
-        auth();
-        socket.send(JSON.stringify({ action: 'ping' }));
-        socket.send(JSON.stringify({ action: 'get_settings' }));
-        socket.send(JSON.stringify({ action: 'get_req_queue' }));
-        socket.send(JSON.stringify({ action: 'get_resp_queue' }));
     });
     socket.addEventListener('message', parseWSMessage);
     socket.addEventListener('close', function(event) {

@@ -29,12 +29,20 @@ func startWebSocketServer() {
 	Error.Fatal(http.ListenAndServe(":8000", nil))
 }
 
+func (sr SocketRequest) send(conn *websocket.Conn) bool {
+	msg, err := json.Marshal(sr)
+	if handleError(err, "Failed to marshal message", false) {
+		return false
+	}
+	err = conn.WriteMessage(websocket.TextMessage, msg)
+	return !handleError(err, "Failed to write message to client", false)
+}
+
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// Upgrade HTTP connection to WebSocket
 	upgrader := websocket.Upgrader{}
 	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		Error.Println("Failed to upgrade connection to WebSocket:", err)
+	if handleError(err, "Failed to upgrade connection to WebSocket", false) {
 		return
 	}
 	defer conn.Close()
@@ -43,16 +51,16 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	clients[conn] = (config.Password == "")
 	if !clients[conn] {
 		var response SocketRequest
-		response.Msgtype = "auth"
+		response.Msgtype = MessageTypeAuth
 		response.Msg = "required"
-		msg, err := json.Marshal(response)
-		if err != nil {
-			Error.Println("Failed to marshal message:", err)
+		if !response.send(conn) {
 			return
 		}
-		err = conn.WriteMessage(websocket.TextMessage, msg)
-		if err != nil {
-			Error.Println("Failed to write message to client:", err)
+	} else {
+		var response SocketRequest
+		response.Msgtype = MessageTypeAuth
+		response.Msg = "success"
+		if !response.send(conn) {
 			return
 		}
 	}
@@ -74,77 +82,57 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			Error.Println("Failed to unmarshal message:", err)
 			response = newResponseError("Failed to unmarshal message", err)
-			msg, err = json.Marshal(response)
 		} else {
 			// Print received message
 			Debug.Println("Received action:", string(request.Action))
 			if request.Action != "auth" && !clients[conn] {
-				response.Msgtype = "auth"
+				response.Msgtype = MessageTypeAuth
 				response.Msg = "failed"
 				Warning.Printf("Client %s not authenticated", conn.RemoteAddr())
-				msg, err = json.Marshal(response)
 			} else {
 				switch string(request.Action) {
 				case "auth":
 					if request.Msg == config.Password {
-						response.Msgtype = "auth"
+						response.Msgtype = MessageTypeAuth
 						response.Msg = "success"
 						clients[conn] = true
 					} else {
-						response.Msgtype = "auth"
+						response.Msgtype = MessageTypeAuth
 						response.Msg = "failed"
-						msg, err = json.Marshal(response)
-						if err != nil {
-							Error.Println("Failed to marshal message:", err)
-							break
-						}
-						err = conn.WriteMessage(websocket.TextMessage, msg)
-						if err != nil {
-							Error.Println("Failed to write message to client:", err)
-							break
+						if !response.send(conn) {
+							return
 						}
 					}
-					msg, err = json.Marshal(response)
 				case "ping":
 					response.Msg = "pong"
-					response.Msgtype = "ping"
-					msg, err = json.Marshal(response)
+					response.Msgtype = MessageTypePing
 				case "get_req_queue":
-					msg = getReqQueue()
+					response = getReqQueue()
 				case "get_resp_queue":
-					msg = getRespQueue()
+					response = getRespQueue()
 				case "pass_req":
-					msg = request.passRequest()
+					response = request.passRequest()
 				case "pass_resp":
-					msg = request.passResponse()
+					response = request.passResponse()
 				case "drop":
-					msg = request.dropRequest()
+					response = request.dropRequest()
 				case "get_history":
 					response.Queue = make([]QueueItem, 0)
 					for _, request := range history {
 						response.Queue = append(response.Queue, request.toHistoryQueue())
 					}
-					response.Msgtype = "history"
-					msg, err = json.Marshal(response)
+					response.Msgtype = MessageTypeHistory
 				case "get_settings":
-					response.Msgtype = "settings"
+					response.Msgtype = MessageTypeSettings
 					response.Settings = settings
-					msg, err = json.Marshal(response)
 				case "set_settings":
-					msg, err = setSettings(request.Settings)
+					response = setSettings(request.Settings)
 				default:
 					response = newResponseError("Unknown action", nil)
-					msg, err = json.Marshal(response)
 				}
 			}
 		}
-		if err != nil {
-			Error.Println("Failed to marshal message:", err)
-			break
-		}
-		err = conn.WriteMessage(websocket.TextMessage, msg)
-		if err != nil {
-			Error.Println("Failed to write message to client:", err)
+		if !response.send(conn) {
 			break
 		}
 	}
@@ -164,22 +152,25 @@ func broadcastMessage(message string) {
 	}
 }
 
-func setSettings(newSettings Settings) ([]byte, error) {
+func setSettings(newSettings Settings) SocketRequest {
 	var response SocketRequest
 	settings = newSettings
 	Debug.Println("Settings:", settings)
-	response.Msgtype = "settings"
+	response.Msgtype = MessageTypeSettings
 	response.Settings = settings
 	msg, err := json.Marshal(response)
+	if handleError(err, "Failed to marshal message", false) {
+		return response
+	}
 	broadcastMessage(string(msg))
-	return msg, err
+	return response
 }
 
 func (proxyRequest *ProxyRequest) queueRequest() {
 	reqQueue <- proxyRequest
 	proxyRequest.addToHistory()
 	var socketMessage SocketRequest
-	socketMessage.Msgtype = "newRequest"
+	socketMessage.Msgtype = MessageTypeNewRequest
 	socketMessage.Queue = make([]QueueItem, 1)
 	socketMessage.Queue[0] = proxyRequest.toReqQueue()
 	msg, _ := json.Marshal(socketMessage)
@@ -190,7 +181,7 @@ func (proxyRequest *ProxyRequest) queueResponse() {
 	proxyRequest.Handled = false
 	respQueue <- proxyRequest
 	var socketMessage SocketRequest
-	socketMessage.Msgtype = "newResponse"
+	socketMessage.Msgtype = MessageTypeNewResponse
 	socketMessage.Queue = make([]QueueItem, 1)
 	socketMessage.Queue[0] = proxyRequest.toRespQueue()
 	msg, _ := json.Marshal(socketMessage)
@@ -287,14 +278,13 @@ func (proxyRequest *ProxyRequest) toHistoryQueue() QueueItem {
 func newResponseError(message string, err error) SocketRequest {
 	var response SocketRequest
 	response.Error = err
-	response.Msgtype = "error"
+	response.Msgtype = MessageTypeError
 	response.Msg = message
 	return response
 }
 
-func getReqQueue() []byte {
+func getReqQueue() SocketRequest {
 	var resp SocketRequest
-	var msg []byte
 	// Get queue but do not pop
 	resp.Queue = make([]QueueItem, 0)
 	for i := 0; i < len(reqQueue); i++ {
@@ -302,14 +292,12 @@ func getReqQueue() []byte {
 		resp.Queue = append(resp.Queue, request.toReqQueue())
 		reqQueue <- request
 	}
-	resp.Msgtype = "req_queue"
-	msg, resp.Error = json.Marshal(resp)
-	return msg
+	resp.Msgtype = MessageTypeReqQueue
+	return resp
 }
 
-func getRespQueue() []byte {
+func getRespQueue() SocketRequest {
 	var resp SocketRequest
-	var msg []byte
 	// Get queue but do not pop
 	resp.Queue = make([]QueueItem, 0)
 	for i := 0; i < len(respQueue); i++ {
@@ -317,43 +305,36 @@ func getRespQueue() []byte {
 		resp.Queue = append(resp.Queue, request.toRespQueue())
 		respQueue <- request
 	}
-	resp.Msgtype = "resp_queue"
-	msg, resp.Error = json.Marshal(resp)
-	return msg
+	resp.Msgtype = MessageTypeRespQueue
+	return resp
 }
 
-func (req *SocketRequest) passRequest() []byte {
+func (req *SocketRequest) passRequest() SocketRequest {
 	var response SocketRequest
-	var msg []byte
 	if len(reqQueue) == 0 {
 		response = newResponseError("Queue is empty", nil)
-		msg, response.Error = json.Marshal(response)
-		return msg
+		return response
 	}
 	if !passUUID(req.UUID, req.Queue[0]) {
 		response = newResponseError("Request UUID does not match", nil)
 	} else {
-		response.Msgtype = "success"
+		response.Msgtype = MessageTypeSuccess
 	}
-	msg, response.Error = json.Marshal(response)
-	return msg
+	return response
 }
 
-func (req *SocketRequest) passResponse() []byte {
+func (req *SocketRequest) passResponse() SocketRequest {
 	var response SocketRequest
-	var msg []byte
 	if len(respQueue) == 0 {
 		response = newResponseError("Queue is empty", nil)
-		msg, response.Error = json.Marshal(response)
-		return msg
+		return response
 	}
 	if !passRespUUID(req.UUID, req.Queue[0]) {
 		response = newResponseError("Response UUID does not match", nil)
 	} else {
-		response.Msgtype = "success"
+		response.Msgtype = MessageTypeSuccess
 	}
-	msg, response.Error = json.Marshal(response)
-	return msg
+	return response
 }
 
 func passRespUUID(uuid string, newItem ...QueueItem) bool {
@@ -385,7 +366,7 @@ func passRespUUID(uuid string, newItem ...QueueItem) bool {
 		response.Handled = true
 	}
 	var broadcast SocketRequest
-	broadcast.Msgtype = "handled"
+	broadcast.Msgtype = MessageTypeHandled
 	broadcast.UUID = response.UUID
 	msg, _ := json.Marshal(broadcast)
 	broadcastMessage(string(msg))
@@ -429,23 +410,21 @@ func passUUID(uuid string, newItem ...QueueItem) bool {
 		request.Handled = true
 	}
 	var broadcast SocketRequest
-	broadcast.Msgtype = "handled"
+	broadcast.Msgtype = MessageTypeHandled
 	broadcast.UUID = request.UUID
 	msg, _ := json.Marshal(broadcast)
 	broadcastMessage(string(msg))
 	return true
 }
 
-func (req *SocketRequest) dropRequest() []byte {
+func (req *SocketRequest) dropRequest() SocketRequest {
 	var response SocketRequest
-	var msg []byte
 	if !dropUUID(req.UUID) {
 		response = newResponseError("UUID does not match", nil)
 	} else {
-		response.Msgtype = "dropped"
+		response.Msgtype = MessageTypeDropped
 	}
-	msg, response.Error = json.Marshal(response)
-	return msg
+	return response
 }
 
 func dropUUID(uuid string) bool {
@@ -465,7 +444,7 @@ func dropUUID(uuid string) bool {
 	request.Dropped = true
 	request.Handled = true
 	var broadcast SocketRequest
-	broadcast.Msgtype = "handled"
+	broadcast.Msgtype = MessageTypeHandled
 	broadcast.UUID = request.UUID
 	msg, _ := json.Marshal(broadcast)
 	broadcastMessage(string(msg))
