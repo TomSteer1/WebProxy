@@ -34,14 +34,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // WebSocket event listeners
     socket.addEventListener('open', function(event) {
         console.log('WebSocket connection established');
+        auth();
         // Pull the current queue from the WebSocket server
-        socket.send(JSON.stringify({ action: 'ping' }));
-        socket.send(JSON.stringify({ action: 'get_settings' }));
-        socket.send(JSON.stringify({ action: 'get_req_queue' }));
-        socket.send(JSON.stringify({ action: 'get_resp_queue' }));
-        if (window.location.hash.slice(1) == 'history') {
-            socket.send(JSON.stringify({ action: 'get_history' }));
-        }
     });
 
     socket.addEventListener('message', parseWSMessage);
@@ -60,11 +54,33 @@ document.addEventListener('DOMContentLoaded', function() {
 
 });
 
+function auth() {
+    password = localStorage.getItem('password');
+    while (password == null) {
+        password = prompt("Please enter the password")
+        localStorage.setItem('password', password);
+    }
+    socket.send(JSON.stringify({ action: 'auth', msg: password }));
+}
+
 function parseWSMessage(event) {
     console.debug('Received message:', event.data);
     // Handle incoming messages from the WebSocket server
     const message = JSON.parse(event.data);
     switch (message.msgtype) {
+        case 'auth':
+            if (message.msg == 'success') {
+                socket.send(JSON.stringify({ action: 'ping' }));
+                socket.send(JSON.stringify({ action: 'get_settings' }));
+                socket.send(JSON.stringify({ action: 'get_req_queue' }));
+                socket.send(JSON.stringify({ action: 'get_resp_queue' }));
+                if (window.location.hash.slice(1) == 'history') {
+                    socket.send(JSON.stringify({ action: 'get_history' }));
+                }
+            }else {
+                localStorage.removeItem('password');
+                auth();
+            }
         case 'req_queue':
             // Update the queue with the new data
             req_queue = message.queue;
@@ -135,6 +151,7 @@ function Reconnect() {
     socket.addEventListener('open', function(event) {
         console.log('WebSocket connection established');
         // Pull the current queue from the WebSocket server
+        auth();
         socket.send(JSON.stringify({ action: 'ping' }));
         socket.send(JSON.stringify({ action: 'get_settings' }));
         socket.send(JSON.stringify({ action: 'get_req_queue' }));
@@ -561,7 +578,8 @@ function parseCookiesTable(table) {
         Cookie.Value = value;
         Cookie.Path = path;
         Cookie.Domain = domain;
-        Cookie.Expires = expires;
+        // 2006-01-02T15:04:05Z
+        Cookie.Expires = expires || '2035-01-01T00:00:00Z'
         cookies.push(Cookie);
     }
     return cookies;

@@ -33,6 +33,7 @@ func NewConfig() *Config {
 	loadEnv(&config.ProxyListenPort, "ProxyListenPort", 8888)
 	loadEnv(&config.ProxyListenAddress, "ProxyListenAddress", "127.0.0.1")
 	loadEnv(&config.SocketLocation, "SocketLocation", os.TempDir()+"/proxy/https.sock")
+	loadEnv(&config.Password, "Password", "")
 	settings.ProxyPort = config.ProxyListenPort
 	return config
 }

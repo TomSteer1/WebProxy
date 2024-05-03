@@ -98,7 +98,7 @@ func generateCert(ca tls.Certificate) ([]byte, []byte, error) {
 		dnsNames = append(dnsNames, "*."+k, k)
 	}
 	// Generate random serial number
-	randInt, err := rand.Int(rand.Reader, big.NewInt(100000))
+	randInt, _ := rand.Int(rand.Reader, big.NewInt(100000))
 	cert := &x509.Certificate{
 		SerialNumber: randInt,
 		Subject: pkix.Name{

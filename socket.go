@@ -40,7 +40,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	// Add client to clients map
-	clients[conn] = true
+	clients[conn] = false
 
 	// Read and write messages
 	for {
@@ -62,46 +62,71 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			msg, err = json.Marshal(response)
 		} else {
 			// Print received message
-			Debug.Println("Received message:", string(request.Action))
-			switch string(request.Action) {
-			case "ping":
-				response.Msg = "pong"
-				response.Msgtype = "ping"
+			Debug.Println("Received action:", string(request.Action))
+			if request.Action != "auth" && !clients[conn] {
+				response.Msgtype = "auth"
+				response.Msg = "failed"
+				Warning.Printf("Client %s not authenticated", conn.RemoteAddr())
 				msg, err = json.Marshal(response)
-			case "get_req_queue":
-				msg = getReqQueue()
-			case "get_resp_queue":
-				msg = getRespQueue()
-			case "pass_req":
-				msg = request.passRequest()
-			case "pass_resp":
-				msg = request.passResponse()
-			case "drop":
-				msg = request.dropRequest()
-			case "get_history":
-				response.Queue = make([]QueueItem, 0)
-				for _, request := range history {
-					response.Queue = append(response.Queue, request.toHistoryQueue())
+			} else {
+				switch string(request.Action) {
+				case "auth":
+					if request.Msg == config.Password {
+						response.Msgtype = "auth"
+						response.Msg = "success"
+						clients[conn] = true
+					} else {
+						response.Msgtype = "auth"
+						response.Msg = "failed"
+						msg, err = json.Marshal(response)
+						if err != nil {
+							Error.Println("Failed to marshal message:", err)
+							break
+						}
+						err = conn.WriteMessage(websocket.TextMessage, msg)
+						if err != nil {
+							Error.Println("Failed to write message to client:", err)
+							break
+						}
+					}
+					msg, err = json.Marshal(response)
+				case "ping":
+					response.Msg = "pong"
+					response.Msgtype = "ping"
+					msg, err = json.Marshal(response)
+				case "get_req_queue":
+					msg = getReqQueue()
+				case "get_resp_queue":
+					msg = getRespQueue()
+				case "pass_req":
+					msg = request.passRequest()
+				case "pass_resp":
+					msg = request.passResponse()
+				case "drop":
+					msg = request.dropRequest()
+				case "get_history":
+					response.Queue = make([]QueueItem, 0)
+					for _, request := range history {
+						response.Queue = append(response.Queue, request.toHistoryQueue())
+					}
+					response.Msgtype = "history"
+					msg, err = json.Marshal(response)
+				case "get_settings":
+					response.Msgtype = "settings"
+					response.Settings = settings
+					msg, err = json.Marshal(response)
+				case "set_settings":
+					msg, err = setSettings(request.Settings)
+				default:
+					response = newResponseError("Unknown action", nil)
+					msg, err = json.Marshal(response)
 				}
-				response.Msgtype = "history"
-				msg, err = json.Marshal(response)
-			case "get_settings":
-				response.Msgtype = "settings"
-				response.Settings = settings
-				msg, err = json.Marshal(response)
-			case "set_settings":
-				msg, err = setSettings(request.Settings)
-			default:
-				response = newResponseError("Unknown action", nil)
-				msg, err = json.Marshal(response)
 			}
 		}
 		if err != nil {
 			Error.Println("Failed to marshal message:", err)
 			break
 		}
-
-		// Write message back to client
 		err = conn.WriteMessage(websocket.TextMessage, msg)
 		if err != nil {
 			Error.Println("Failed to write message to client:", err)
@@ -112,6 +137,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 func broadcastMessage(message string) {
 	for client := range clients {
+		if !clients[client] {
+			continue
+		}
 		err := client.WriteMessage(websocket.TextMessage, []byte(message))
 		if err != nil {
 			Error.Println("Failed to broadcast message to client:", err)

@@ -57,4 +57,5 @@ type Config struct {
 	DebugMode          bool
 	ProxyListenAddress string
 	SocketLocation     string
+	Password           string
 }
