@@ -21,6 +21,8 @@ var publicFs embed.FS
 var secretFs embed.FS
 
 func main() {
+	Info.Println("Download the certificate from http://localhost:8000/cert.pa")
+	Info.Println("Set your proxy to ", config.ProxyListenAddress, ":", config.ProxyListenPort)
 	go startHttpsServer()
 	go startWebSocketServer()
 	startProxy()

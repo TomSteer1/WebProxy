@@ -34,7 +34,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // WebSocket event listeners
     socket.addEventListener('open', function(event) {
         console.log('WebSocket connection established');
-        auth();
         // Pull the current queue from the WebSocket server
     });
 
@@ -56,10 +55,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function auth() {
     password = localStorage.getItem('password');
-    while (password == null) {
-        password = prompt("Please enter the password")
-        localStorage.setItem('password', password);
-    }
+    password = prompt("Please enter the password")
+    localStorage.setItem('password', password);
     socket.send(JSON.stringify({ action: 'auth', msg: password }));
 }
 
@@ -578,7 +575,6 @@ function parseCookiesTable(table) {
         Cookie.Value = value;
         Cookie.Path = path;
         Cookie.Domain = domain;
-        // 2006-01-02T15:04:05Z
         Cookie.Expires = expires || '2035-01-01T00:00:00Z'
         cookies.push(Cookie);
     }

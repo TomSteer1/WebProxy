@@ -40,7 +40,22 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	// Add client to clients map
-	clients[conn] = false
+	clients[conn] = (config.Password == "")
+	if !clients[conn] {
+		var response SocketRequest
+		response.Msgtype = "auth"
+		response.Msg = "required"
+		msg, err := json.Marshal(response)
+		if err != nil {
+			Error.Println("Failed to marshal message:", err)
+			return
+		}
+		err = conn.WriteMessage(websocket.TextMessage, msg)
+		if err != nil {
+			Error.Println("Failed to write message to client:", err)
+			return
+		}
+	}
 
 	// Read and write messages
 	for {
